@@ -1,7 +1,6 @@
 #pragma once
 
 #include "common.h"
-#include <iostream>
 
 //
 // Resizable array/dynamic array starts here

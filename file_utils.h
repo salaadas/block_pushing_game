@@ -1,6 +1,7 @@
 #pragma once
 
 #include "common.h"
+#include <cctype>
 
 template <typename U, typename V>
 void Swap(U *a, V *b)

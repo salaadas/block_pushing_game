@@ -1,6 +1,7 @@
 // https://github.com/onelivesleft/jai-string/blob/main/Strings_Alloc/Strings_Alloc.jai
 
 #include "newstring.h"
+#include <cctype>
 
 // @Important: Must have defined 'allocator' and 'result' beforehand!
 #define set_result_allocator()                                               \
