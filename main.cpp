@@ -449,9 +449,6 @@ void do_one_frame()
 
 void my_hotloader_callback(Asset_Change *change, bool handled); // @ForwardDeclare
 
-// :DeprecateMe
-#include "sampled_animation.h"
-
 int main()
 {
     init_context();
@@ -473,25 +470,13 @@ int main()
 
     catalog_loose_files(String("data"), &all_catalogs);
 
-    newline();
+    newline(); // New line here because we want to differentiate the catalogs' logs with the game-loop ones.
 
     reset_temporary_storage();
 
     // @Important: Cannot init these after before is initted!!!
     white_texture = catalog_find(&texture_catalog, String("white"));
     // the_missing_mesh = catalog_find(&texture_catalog, String("missing_asset")); // Should be a question mark @Incomplete:
-
-    // :DeprecateMe
-    // :DeprecateMe
-    // :DeprecateMe
-    // :DeprecateMe
-    // :DeprecateMe
-    // :DeprecateMe
-    {
-        // auto anim = New<Sampled_Animation>();
-        // load_sampled_animation(anim, String("data/models/animations/walking_scaled.fbx"));
-        // load_sampled_animation(anim, String("data/models/animations/walking_unscaled_fbx.keyframe_animation"));
-    }
 
     // We init the shaders (after the catalog_loose_files). For draw.cpp
     init_shaders();

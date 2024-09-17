@@ -178,6 +178,54 @@ Vector4 lerp(Vector4 x, Vector4 y, f32 t)
     return x * (1.f - t) + y * t;
 }
 
+Quaternion lerp(Quaternion a, Quaternion b, f32 t)
+{
+    Quaternion r;
+    r.x = a.x + t * (b.x - a.x);
+    r.y = a.y + t * (b.y - a.y);
+    r.z = a.z + t * (b.z - a.z);
+    r.w = a.w + t * (b.w - a.w);
+
+    return r;
+}
+
+void normalize_or_identity(Quaternion *q)
+{
+    auto sq = sqrtf(q->x*q->x + q->y*q->y + q->z*q->z + q->w*q->w);
+    if (sq == 0)
+    {
+        q->x = 0;
+        q->y = 0;
+        q->z = 0;
+        q->w = 1;
+        return;
+    }
+
+    auto factor = 1.0f / sq;
+    q->x *= factor;
+    q->y *= factor;
+    q->z *= factor;
+    q->w *= factor;
+}
+
+Quaternion nlerp(Quaternion a, Quaternion b, f32 t)
+{
+    auto r = lerp(a, b, t);
+    normalize_or_identity(&r);
+    return r;
+}
+
+Quaternion negate(Quaternion q)
+{
+    Quaternion r;
+    r.x = -q.x;
+    r.y = -q.y;
+    r.z = -q.z;
+    r.w = -q.w;
+
+    return r;
+}
+
 Vector2 rotate(Vector2 v, f32 theta)
 {
     auto ct = cosf(theta);
@@ -308,4 +356,3 @@ Vector3 move_toward(Vector3 a, Vector3 b, f32 amount)
 
     return result;
 }
-

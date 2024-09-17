@@ -113,9 +113,7 @@ void array_copy(RArr<V> *dest, RArr<V> *src)
 template <typename V>
 void array_reserve(RArr<V> *array, i64 size)
 {
-    if ((array == NULL) ||
-        (size <= 0) ||
-        (size <= array->allocated)) return;
+    if ((array == NULL) || (size <= 0) || (size <= array->allocated)) return;
     // We make sure that the count does not get modified so that it is larger than 
     // the allocated prior to the reservation.
     // @Note: Change the count to 0 if you don't care about the old value inside the array.
@@ -145,6 +143,13 @@ void array_reserve(RArr<V> *array, i64 size)
 
     array->data      = new_memory;
     array->allocated = size;
+}
+
+template <typename V>
+void array_resize(RArr<V> *array, i64 size)
+{
+    array_reserve(array, size);
+    array->count = size;
 }
 
 template <typename V>

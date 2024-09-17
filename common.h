@@ -166,6 +166,9 @@ Vector2 lerp(Vector2 x, Vector2 y, f32 t);
 Vector3 lerp(Vector3 x, Vector3 y, f32 t);
 Vector4 lerp(Vector4 x, Vector4 y, f32 t);
 
+Quaternion nlerp(Quaternion x, Quaternion y, f32 t);
+Quaternion negate(Quaternion q);
+
 Vector2 rotate(Vector2 v,  f32 theta);
 f32 normalize_or_zero(Vector3 *dir);
 
@@ -184,3 +187,13 @@ f32 sign_float(f32 x);
 
 f32 move_toward(f32 a, f32 b, f32 amount);
 Vector3 move_toward(Vector3 a, Vector3 b, f32 amount);
+
+template <typename T>
+void Clamp(T *x, T lower, T higher)
+{
+    static_assert(std::is_arithmetic<T>::value);
+
+    if (*x < lower)  *x = lower;
+    if (*x > higher) *x = higher;
+}
+

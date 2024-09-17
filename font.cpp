@@ -1,5 +1,7 @@
 #include "font.h"
 
+#include <cwchar>
+
 FT_Library ft_library;
 bool fonts_initted = false;
 

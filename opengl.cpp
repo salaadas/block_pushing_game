@@ -915,7 +915,7 @@ void update_texture(Texture_Map *map)
 
     glBindTexture(GL_TEXTURE_2D, map->id);
 
-    GLenum gl_dest_format   = GL_SRGB8_ALPHA8;
+    GLenum gl_dest_format   = GL_RGBA8; // GL_SRGB8_ALPHA8; @Fixme: This is wrong, we actually want SRGB8_ALPHA8
     GLenum gl_source_format = GL_RGBA;
     GLenum gl_type          = GL_UNSIGNED_BYTE;
     i32    alignment        = 4;
@@ -935,7 +935,13 @@ void update_texture(Texture_Map *map)
         {
             // I think we should use GL_SRGB8 for gamma correction
             // But I'm not totally sure.... @Temporary
-            gl_dest_format   = GL_RGB8; // GL_SRGB8;
+            //
+            // @Fixme: We actually want the destination to be SRGB8
+            // However, we are not correct handling hdr. So, that
+            // is the reason why the red dude model has darker color.
+            // 
+            // gl_dest_format   = GL_SRGB8;
+            gl_dest_format   = GL_RGB8;
             gl_source_format = GL_RGB;
             alignment        = 1;
         } break;

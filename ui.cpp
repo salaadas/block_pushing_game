@@ -463,7 +463,7 @@ f32 update_action_durations(Button_State *state, Button_Theme *theme, bool begin
         pressed_factor = 1 - factor;
         if (pressed_factor < 0) state->action_duration = -1;
 
-        pressed_factor = std::clamp(pressed_factor, 0.f, 1.f);
+        Clamp(&pressed_factor, 0.f, 1.f);
         pressed_factor *= pressed_factor;
     }
 
@@ -487,7 +487,7 @@ my_pair<f32 /*over_factor*/, f32 /*pressed_flash_factor*/> update_production_val
     auto blend_factor = sinf(TAU * state->over_duration * .5f);
     blend_factor += 1;
     blend_factor *= .5f;
-    blend_factor = std::clamp(blend_factor, 0.0f, 1.0f);
+    Clamp(&blend_factor, 0.0f, 1.0f);
 
     constexpr auto STROBE_BASE   = .6f;
     constexpr auto STROBE_HEIGHT = .4f;
@@ -654,8 +654,8 @@ void rounded_rectangle(Rect r, Rectangle_Shape shape, Vector4 color)
     f32 frame_pixels  = get_float_parameter(r, shape.relativeness, shape.frame_thickness, shape.frame_thickness);
 
     auto shortest = std::min(r.w, r.h);
-    radius_pixels = std::clamp(radius_pixels, 0.0f, shortest * .5f);
-    frame_pixels  = std::clamp(frame_pixels, 0.0f, shortest * .5f);
+    Clamp(&radius_pixels, 0.0f, shortest * .5f);
+    Clamp(&frame_pixels, 0.0f, shortest * .5f);
 
     if ((frame_pixels > 0) && (frame_pixels < 1)) frame_pixels = 1; // Give them at least 1 pixel if they are asking for a frame...
 
@@ -865,7 +865,7 @@ bool base_checkbox(Rect r, String text, bool selected, Checkbox_Theme *theme = N
             auto ct = sinf(theta);
 
             auto damp = 1 - state->base.action_duration_2 / 2.3f;
-            damp = std::clamp(damp, 0.0f, 1.0f);
+            Clamp(&damp, 0.0f, 1.0f);
             damp *= damp;
 
             if (damp == 0) state->base.action_duration_2 = -1;
@@ -1010,7 +1010,7 @@ void draw_arrow(Button_State *state, Button_Theme *theme, Vector2 p4, Vector2 p5
     auto denom = theme->press_duration;
     if (!denom) denom = 1;
     auto s = state->action_duration / denom;
-    s = std::clamp(s, 0.0f, 1.0f);
+    Clamp(&s, 0.0f, 1.0f);
 
     // We want s to go from 0 to 1 then to 0
     // Using the parabola equation:
@@ -1254,7 +1254,7 @@ bool slider(Rect _r, T *value, T min_value, T max_value, String prefix, String s
         auto initial = get_initial_value(state, *value);
         if ((min_value <= initial) && (initial <= max_value))
         {
-            t = std::clamp(t, 0.0f, 1.0f);
+            Clamp(&t, 0.0f, 1.0f);
         }
 
         if (is_int)
@@ -1479,7 +1479,7 @@ void end_scrollable_region(Scrollable_Region_State *state, f32 min_y, f32 *scrol
         *scroll_value -= dz;
     }
 
-    *scroll_value = std::clamp(*scroll_value, 0.0f, max_scroll_value);
+    Clamp(scroll_value, 0.0f, max_scroll_value);
 
     immediate_flush();
 }
@@ -1640,7 +1640,7 @@ void compute_slide_regions(Rect r, Slidable_Region_State *state, Rect *left_or_t
     if (theme->orientation == Slidable_Region_Theme::HORIZONTAL)
     {
         auto x = r.w * state->divider_t - half_divider_thickness;
-        x = std::clamp(x, 0.0f, r.w - divider_thickness);
+        Clamp(&x, 0.0f, r.w - divider_thickness);
 
         auto [left, middle]    = cut_left(r, x);
         auto [div_rect, right] = cut_left(middle, divider_thickness);
@@ -1652,7 +1652,7 @@ void compute_slide_regions(Rect r, Slidable_Region_State *state, Rect *left_or_t
     else
     {
         auto y = r.h * state->divider_t - half_divider_thickness;
-        y = std::clamp(y, 0.0f, r.h - divider_thickness);
+        Clamp(&y, 0.0f, r.h - divider_thickness);
 
         auto [bottom, middle] = cut_bottom(r, y );
         auto [div_rect, top]   = cut_bottom(middle, divider_thickness);
@@ -1765,7 +1765,7 @@ Slidable_Region_State *begin_slidable_region(Rect r, Slidable_Region_Theme *them
                 auto denom = divider_dimension;
                 if (!denom) denom = 1;
                 state->divider_t += moved / denom;
-                state->divider_t = std::clamp(state->divider_t, 0.0f, 1.0f);
+                Clamp(&state->divider_t, 0.0f, 1.0f);
 
                 // Recompute the rects since the dividewr moved!
                 compute_slide_regions(r, state, &left_or_top_rect, &divider_rect, &right_or_bottom_rect);

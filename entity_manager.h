@@ -43,6 +43,8 @@ struct Entity_Manager;
 //     TELEPORT_THEN_DISAPPEAR = 4,
 // };
 
+struct Animation_Player;
+
 struct Entity
 {
     // String     entity_name;
@@ -84,6 +86,8 @@ struct Entity
     Vector3 visual_position;
 
     // SArr<Material*> materials;
+
+    Animation_Player *animation_player = NULL;
 
     // @Important: we need to use this to do get_clones_of()
     // Pid turn_order_id;

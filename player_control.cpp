@@ -258,7 +258,7 @@ void do_camera_orientation_input(f32 *camera_theta_pointer, f32 *camera_phi_poin
     phi   +=  mouse_delta_y * MOUSE_SENS * dt;
 
     auto PHI_LIMIT = static_cast<f32>(TAU * 0.25 * 0.95);
-    phi = std::clamp(phi, -PHI_LIMIT, PHI_LIMIT);
+    Clamp(&phi, -PHI_LIMIT, PHI_LIMIT);
 
     *camera_theta_pointer = theta;
     *camera_phi_pointer   = phi;
@@ -339,7 +339,7 @@ void do_camera_zoom_input(f32 *camera_fov_vertical)
 
     fov += y_offset;
 
-    fov = std::clamp(fov, 1.0f, 90.0f);
+    Clamp(&fov, 1.0f, 90.0f);
 
     *camera_fov_vertical = fov;
 }

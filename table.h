@@ -3,9 +3,6 @@
 #include "common.h"
 #include "hash.h"
 
-// @Note: Only include <functional> because we need to pass lambdas into the table constructor
-#include <functional>
-
 #define COUNT_COLLISION
 #define NEVER_OCCUPIED_HASH 0
 #define REMOVED_HASH        1

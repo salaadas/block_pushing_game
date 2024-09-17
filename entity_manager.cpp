@@ -5,6 +5,7 @@
 #include "file_utils.h"
 #include "undo.h"
 #include "main.h"
+#include "animation_player.h"
 
 void init_proximity_grid(Proximity_Grid *grid)
 {
@@ -508,9 +509,15 @@ void load_ascii_level(Entity_Manager *manager, String full_path)
                 // making of the guys.
                 else if (c == 'F' || c == '1')
                 {
+                    // @Cleanup: Create a Make_guy3D procedure.
                     auto guy = Make3D<Guy>(manager, x, y, String("only-red")); // @Hardcoded: @Temporary:
                     init_guy(guy);
                     guy->can_push = true;
+
+                    // @Incomplete: Handle animation playing for the guys...
+                    guy->base->animation_player = New<Animation_Player>(); // @Leak:
+                    init_player(guy->base->animation_player);
+                    // set_mesh(guy->base->mesh);
 
                     bool active = false;
                     if (c == 'F') active = true;

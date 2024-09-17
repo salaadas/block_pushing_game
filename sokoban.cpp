@@ -169,7 +169,7 @@ void advance_level(i32 delta, bool due_to_victory)
     //     exit(1);
     // }
 
-    current_level_index = std::clamp(current_level_index, 0, static_cast<i32>(num_levels - 1));
+    Clamp(&current_level_index, 0, static_cast<i32>(num_levels - 1));
 
     init_level_general(true);
 }

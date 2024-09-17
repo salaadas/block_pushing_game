@@ -97,7 +97,7 @@ void init(Text_Input *input)
 
 void clamp_insert_point(Text_Input *input)
 {
-    input->insert_point = std::clamp(input->insert_point, 0, static_cast<i32>(input->text.count));
+    Clamp(&input->insert_point, 0, static_cast<i32>(input->text.count));
 }
 
 // void set_bounds(Text_Input *input, f32 x0, f32 y0, f32 x1, f32 y1)
@@ -251,7 +251,7 @@ void set_input(Text_Input *input, String s)
 
 void refresh_input_from_history(Text_Input *input)
 {
-    input->command_history_index = std::clamp(input->command_history_index, 0, static_cast<i32>(input->command_history.count));
+    Clamp(&input->command_history_index, 0, static_cast<i32>(input->command_history.count));
 
     if (input->command_history_index == input->command_history.count)
     {
@@ -1044,10 +1044,10 @@ void draw(Text_Input *input, Rect r, Text_Input_Theme *theme, i64 identifier, So
         auto width_up_to_insert = get_text_width(font, s_up_to_insert);
 
         auto margin = em(theme->font, theme->text_insert_margin);
-        margin = std::clamp(margin, 0.0f, .9f * r.w);
+        Clamp(&margin, 0.0f, .9f * r.w);
 
         auto alignment_pad = xpad;
-        alignment_pad = std::clamp(alignment_pad, 0.0f, .49f * r.w);
+        Clamp(&alignment_pad, 0.0f, .49f * r.w);
 
         auto insert_x = (x0 - state->camera_x) + width_up_to_insert;
         auto deadzone_x0 = x0 + margin;
@@ -1155,7 +1155,7 @@ void draw(Text_Input *input, Rect r, Text_Input_Theme *theme, i64 identifier, So
             }
         }
 
-        state->camera_x = std::clamp(state->camera_x, left_limit, right_limit);
+        Clamp(&state->camera_x, left_limit, right_limit);
         text_x = x0 - state->camera_x;
         state->last_displayed_text_x = text_x;
     }
@@ -1213,7 +1213,7 @@ void draw(Text_Input *input, Rect r, Text_Input_Theme *theme, i64 identifier, So
                 }
 
                 auto w = cosf(theta) * stride + center;
-                w = std::clamp(w, 0.0f, 1.0f);
+                Clamp(&w, 0.0f, 1.0f);
 
                 auto_complete_color.w = w;
             }
@@ -1300,10 +1300,10 @@ my_pair<i32 /* start */, i32 /* end */> get_selection_indices(Text_Input *input)
 {
     // Maybe we should just have a canonical version of these stored on 'selection'.
     auto start = input->selection.start_character;
-    start = std::clamp(start, 0, static_cast<i32>(input->text.count));
+    Clamp(&start, 0, static_cast<i32>(input->text.count));
 
     auto end = input->selection.end_character;
-    end = std::clamp(end, 0, static_cast<i32>(input->text.count));
+    Clamp(&end, 0, static_cast<i32>(input->text.count));
 
     if (end < start)
     {

@@ -4,12 +4,18 @@
 
 #include "table.h"
 
+//
+// Todo: Document, as I sometimes forget about this.
+//
+// To summary, 'short_name' is the file name without the ending extension, and 'full_name' is the full path
+// of the asset relative to the executable location.
+//
+//
+
 struct Catalog_Base;
 
-typedef void(*ProcRegisterLooseFile)(Catalog_Base *base,
-                                     String short_name, String full_name);
-typedef void(*ProcPerformReloadOrCreation)(Catalog_Base *base,
-                                           String short_name, String full_name, bool do_load_asset);
+typedef void(*ProcRegisterLooseFile)(Catalog_Base *base, String short_name, String full_name);
+typedef void(*ProcPerformReloadOrCreation)(Catalog_Base *base, String short_name, String full_name, bool do_load_asset);
 
 //
 // We separate Catalog_Base from Catalog, so that we can put Catalog_Base pointers into arrays, 

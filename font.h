@@ -28,20 +28,16 @@ struct Font_Page
 {
     Texture_Map      texture;
     Bitmap          *bitmap_data;  // @Cleanup: Not a pointer.
-
     i16              line_cursor_y;
     RArr<Font_Line*> lines;
-
     bool             dirty = false;
 };
 
 struct Font_Line
 {
     Font_Page *page;
-
     i16        bitmap_cursor_x;
     i16        bitmap_cursor_y;
-
     i32        height;
 };
 
@@ -65,8 +61,7 @@ struct Font_Quad
 {
     Vector2 p0, p1, p2, p3;
     f32     u0, v0, u1, v1;
-
-    Glyph_Data   *glyph;
+    Glyph_Data *glyph;
 };
 
 struct Dynamic_Font

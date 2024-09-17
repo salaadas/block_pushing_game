@@ -92,7 +92,7 @@ struct Vertex_Blend_Info_Piece
     f32 matrix_weight = 0;
 };
 
-#define MAX_MATRICES_PER_VERTEX 4
+#define MAX_MATRICES_PER_VERTEX 4 // @Important: Must keep this at 4.
 struct Vertex_Blend_Info
 {
     i32 num_matrices = 0;
@@ -136,10 +136,13 @@ struct Triangle_Mesh
     SArr<Vector3> vertices;
     SArr<Vector2> uvs;
     SArr<Frame3>  vertex_frames;
-    SArr<Vector4> colors;
-    SArr<i32>     canonical_vertex_map;
+    SArr<Vector4> colors; // Only use colors if every triangle list uses colors.
+    
+    // @Incomplete: This is for canonical vertex mapping, in case we deal with a format
+    // that is not GLTF where vertices that have multiple UVs are exported as one thing.
+    // SArr<i32>     canonical_vertex_map;
 
-    // Computed vertex data:
+    // Computed vertex data:        // @Incomplete: Not handling lightmaps
     // SArr<Vector2> lightmap_uvs;
     // SArr<Vector4> lightmap_colors;
 
@@ -159,11 +162,28 @@ struct Triangle_Mesh
     SArr<Triangle_List_Info> triangle_list_info;
     SArr<Render_Material>    material_info;
 
-    Skeleton_Info *skeleton_info = NULL;  // @Incomplete:
-    SArr<i32>     vertex_to_skeleton_info_map;
+    // Skeleton info stuff:
+    Skeleton_Info *skeleton_info = NULL;
+
+    // @Incomplete: This is for canonical vertex mapping from the non-canonical vertex index
+    // to the canonical vertex index, in case we deal with a format that is not GLTF
+    // where vertices that have multiple UVs are exported as one thing. If this is the
+    // case, the Blends Info of the Skeleton_Info must have the same count as the
+    // number of canonical vertices.
+    //   For more context, watch this https://youtu.be/aeDMABSW_KE?si=FS_budaHIUO-p6UX
+    //   at time stamp 1:54:37.
+    // SArr<i32>     vertex_to_vertex_blend_info_map;
+
+    // @Temporary:
+    // @Temporary:
+    // @Temporary:
+    // @Temporary:
+    // This is for drawing the skeletal animation in software.
+    RArr<Vector3> skinned_vertices;
+    RArr<Matrix4> skinning_matrices;
 
     // LOD data:
-    // Triangle_Mesh      *highest_detail_lod; // NULL if LOD not being used
+    // Triangle_Mesh        *highest_detail_lod; // NULL if LOD not being used
     // SArr<Triangle_Mesh*> lods;
 
     // Parameterization_Settings parameterization_settings;
@@ -179,5 +199,7 @@ void init_mesh_catalog(Mesh_Catalog *catalog);
 Triangle_Mesh *make_placeholder(Mesh_Catalog *catalog, String short_name, String full_name);
 void reload_asset(Mesh_Catalog *catalog, Triangle_Mesh *mesh);
 
-bool load_gltf_model_2024(Triangle_Mesh *triangle_mesh);
+bool load_gltf_model_2024(Triangle_Mesh *triangle_mesh); // @Cleanup: Rename to a better name
 bool load_fbx_model(Triangle_Mesh *mesh);
+
+bool load_mesh_into_memory(Triangle_Mesh *mesh);

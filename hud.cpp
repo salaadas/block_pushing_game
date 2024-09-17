@@ -127,7 +127,7 @@ bool draw_one_fader(Fader *fader)
 
     if (alpha > 0)
     {
-        alpha = std::clamp(alpha, 0.0f, 1.0f);
+        Clamp(&alpha, 0.0f, 1.0f);
 
         auto color = fader->color;
         color.w = alpha;

@@ -17,6 +17,8 @@
 #include "opengl.h"
 #include "main.h"
 
+#include <glm/gtc/type_ptr.hpp> // for glm::make_mat4
+
 /*
 void assimp_mat4_to_glm(aiMatrix4x4 src, Matrix4 *dest)
 {
@@ -93,13 +95,13 @@ void allocate_geometry(Triangle_Mesh *triangle_mesh, i32 num_vertices, i32 face_
 {
     assert(triangle_mesh->vertices.count             == 0 &&
            triangle_mesh->uvs.count                  == 0 &&
-           triangle_mesh->vertex_frames.count        == 0 &&
-           triangle_mesh->canonical_vertex_map.count == 0);
+           triangle_mesh->vertex_frames.count        == 0 // &&
+           /* triangle_mesh->canonical_vertex_map.count == 0 */);
 
     triangle_mesh->vertices             = NewArray<Vector3>(num_vertices);
     triangle_mesh->uvs                  = NewArray<Vector2>(num_vertices);
     triangle_mesh->vertex_frames        = NewArray<Frame3>(num_vertices);
-    triangle_mesh->canonical_vertex_map = NewArray<i32>(num_vertices);
+    // triangle_mesh->canonical_vertex_map = NewArray<i32>(num_vertices);
     triangle_mesh->index_array          = NewArray<i32>(face_count * 3);
 }
 
@@ -555,7 +557,7 @@ void reload_asset(Mesh_Catalog *catalog, Triangle_Mesh *mesh)
             if (mesh->colors)
             {
                 auto c = mesh->colors[it_index];
-                c.w = 1.0f; // Just to make sure, although we should deprecate the color scale way of rendering things soon. :DeprecateMe.
+                c.w = 1.0f;
 
                 dest.color_scale = argb_color(c);
             }
@@ -753,6 +755,26 @@ void load_accessor_into_memory_buffer(cgltf_accessor *accessor, T **memory_buffe
     if (desired_type)  *desired_type  = accessor->type;
 }
 
+/*
+inline
+i32 flip_gltf_skeleton_node_index(Skeleton_Info *info, i64 gltf_node_index_globally)
+{
+    //
+    // Flipping the GLTF node index, so that our canonical index has the root/hip as 0 instead of the last index.
+    //
+
+    auto skeleton_nodes_count = info->skeleton_node_info.count;
+    auto flipped_index = skeleton_nodes_count - 1 - gltf_node_index_globally;
+
+    // @Fixme: Do we need a node to joint index? Because I think this could go overbound.
+
+    assert(flipped_index >= 0);
+    assert(flipped_index < skeleton_nodes_count);
+
+    return flipped_index;
+}
+*/
+
 bool load_gltf_model_2024(Triangle_Mesh *triangle_mesh) // @Cleanup: Rename
 {
     // @Fixme Currently @Leak if reload.
@@ -785,14 +807,6 @@ bool load_gltf_model_2024(Triangle_Mesh *triangle_mesh) // @Cleanup: Rename
         logprint("gltf_loader", "No meshes found in file '%s'!\n", c_path);
         return false;
     }
-
-    // We need:
-    // - Total vertices.
-    // - Total faces.
-    // - Total triangle list info, which is the number of sub meshes.
-    // - Need to determine if the model is using colors or textures?
-    // 
-    // - To allocate the space for the triangle mesh, materials, and color/texture data.
 
     i32 total_vertices = 0;
     i32 total_faces    = 0;
@@ -857,7 +871,7 @@ bool load_gltf_model_2024(Triangle_Mesh *triangle_mesh) // @Cleanup: Rename
             }
         }
 
-        use_colors = use_colors || (colors_accessor != NULL);
+        use_colors = use_colors && (colors_accessor != NULL);
     }
 
     total_faces /= 3; // We divide the total faces by 3 because total_faces = total_indices / 3. Assuming that the mesh is triangulated.
@@ -995,7 +1009,6 @@ bool load_gltf_model_2024(Triangle_Mesh *triangle_mesh) // @Cleanup: Rename
     //
     {
         auto skeletons_count = parsed_gltf_data->skins_count;
-
         if (skeletons_count)
         {
             if (skeletons_count > 1)
@@ -1003,10 +1016,18 @@ bool load_gltf_model_2024(Triangle_Mesh *triangle_mesh) // @Cleanup: Rename
                 logprint("gltf_loader", "The model '%s' should only contains one skeleton, but we found %ld upon loading! Using the first one...\n", c_path, skeletons_count);
             }
 
+            //
+            // Allocate the space for the mapping from vertex index to the vertex blend info
+            // up-front.
+            // The vertex index directly corresponds to the vertex_blend_info array, isn't it?
+            //
+            auto vertices_count = triangle_mesh->vertices.count;
+            assert(vertices_count); // Must have the count of the vertices first.
+
+            // triangle_mesh->vertex_to_vertex_blend_info_map = NewArray<i32>(vertices_count);
+
             auto skeleton_data = &parsed_gltf_data->skins[0]; // Using the first skeleton, always.
             auto inverse_bind_matrices_accessor = skeleton_data->inverse_bind_matrices;
-
-            printf("Loading skeleton named '%s' for model '%s'!\n", skeleton_data->name, c_path);
 
             if (inverse_bind_matrices_accessor)
             {
@@ -1015,10 +1036,13 @@ bool load_gltf_model_2024(Triangle_Mesh *triangle_mesh) // @Cleanup: Rename
                 assert(triangle_mesh->skeleton_info == NULL);
                 auto info = New<Skeleton_Info>();
 
-                auto nodes_count    = skeleton_data->joints_count;
-                auto vertices_count = triangle_mesh->vertices.count; // Must allocate the vertices before doing skinning info.
+                //
+                // This seems like a big issue, so we have to think about how to map
+                // node or joint from its index.
+                //
+                auto skeleton_nodes_count = skeleton_data->joints_count;
 
-                info->skeleton_node_info = NewArray<Skeleton_Node_Info>(nodes_count);
+                info->skeleton_node_info = NewArray<Skeleton_Node_Info>(skeleton_nodes_count);
                 info->vertex_blend_info  = NewArray<Vertex_Blend_Info>(vertices_count);
 
                 // Number of matrices that transform the node from
@@ -1033,25 +1057,23 @@ bool load_gltf_model_2024(Triangle_Mesh *triangle_mesh) // @Cleanup: Rename
                 // Since every node supposed to have an inverse bind matrice,
                 // the number of matrices must be the same as the number of
                 // nodes.
-                assert(matrices_count == nodes_count);
+                assert(matrices_count == skeleton_nodes_count);
 
-                for (i64 it_index = 0; it_index < nodes_count; ++it_index)
+                for (i64 it_index = 0; it_index < skeleton_nodes_count; ++it_index)
                 {
                     auto gltf_node = skeleton_data->joints[it_index];
 
-                    //
-                    // This is the index of the node within the whole index pool.
-                    // We use this index when we refer to any node's index.
-                    // This is very important, as we don't refer to the it_index.
-                    //
-                    auto node_index_globally = cgltf_node_index(parsed_gltf_data, gltf_node);
+                    // auto node_index_globally    = cgltf_node_index(parsed_gltf_data, gltf_node);
+                    // auto node_index_in_skeleton = flip_gltf_skeleton_node_index(info, node_index_globally);
 
-                    // I don't know if this is right or not.
-                    auto node = &info->skeleton_node_info[node_index_globally];
+                    // @Investigate: I don't know if this is right or not.
+                    auto node = &info->skeleton_node_info[it_index]; // node_index_in_skeleton
                     node->name = copy_string(String(gltf_node->name));
 
-                    Matrix4 m = matrices_memory[it_index]; // @Investigate:
-                    node->rest_object_space_to_object_space = m;
+                    // printf("Mesh catalog, mapping of '%s' with index %ld\n", gltf_node->name, it_index);
+
+                    Matrix4 inverse_m = matrices_memory[it_index];
+                    node->rest_object_space_to_object_space = inverse_m; // @Investigate:
                 }
 
                 triangle_mesh->skeleton_info = info;
@@ -1099,7 +1121,7 @@ bool load_gltf_model_2024(Triangle_Mesh *triangle_mesh) // @Cleanup: Rename
                 auto albedo_texture = &pbr_metallic_roughness->base_color_texture;
                 if (!albedo_texture->texture)
                 {
-                    logprint("Material stuff", "Material does not contains a texture image, using the white texture with the base color!"); // untested @Investigate
+                    logprint("Material system", "Material '%s' for model '%s' does not contains a texture image, using the white texture with the base color!\n", gltf_material->name, c_path);
 
                     material->albedo_2024 = white_texture;
                 }
@@ -1117,50 +1139,58 @@ bool load_gltf_model_2024(Triangle_Mesh *triangle_mesh) // @Cleanup: Rename
                 auto metallic_roughness_texture = &pbr_metallic_roughness->metallic_roughness_texture;
                 if (metallic_roughness_texture->texture)
                 {
-                    logprint("Material stuff", "In material '%s':\n", gltf_material->name);
-                    logprint("Material stuff", "   - texcoord = %d\n", metallic_roughness_texture->texcoord);
-                    logprint("Material stuff", "   - scale = %f\n", metallic_roughness_texture->scale);
-                    logprint("Material stuff", "   - has_transform = %d\n", metallic_roughness_texture->has_transform);
+                    logprint("Met-Rough", "In material '%s':\n", gltf_material->name);
+                    logprint("Met-Rough", "   - texcoord = %d\n", metallic_roughness_texture->texcoord);
+                    logprint("Met-Rough", "   - scale = %f\n", metallic_roughness_texture->scale);
+                    logprint("Met-Rough", "   - has_transform = %d\n", metallic_roughness_texture->has_transform);
 
                     auto image = metallic_roughness_texture->texture->image;
                     if (image)
                     {
-                        logprint("Material stuff", "   - Image name is '%s'!\n", image->name);
+                        logprint("Met-Rough", "   - Image name is '%s'!\n", image->name);
                     }
 
                     // @Incomplete: Figure out what this does.
                     assert(0);
                 }
+            }
 
-                // The normal map.
-                auto normal_texture = &gltf_material->normal_texture;
-                if (normal_texture->texture)
-                {
-                    auto gltf_normal_index = cgltf_image_index(parsed_gltf_data, normal_texture->texture->image);
-                    auto gltf_normal_name  = normal_texture->texture->image->name;
-                    auto normal_map = textures_lookup[gltf_normal_index];
+            // The normal map.
+            auto normal_texture = &gltf_material->normal_texture;
+            if (normal_texture->texture)
+            {
+                auto gltf_normal_index = cgltf_image_index(parsed_gltf_data, normal_texture->texture->image);
+                auto gltf_normal_name  = normal_texture->texture->image->name;
+                auto normal_map = textures_lookup[gltf_normal_index];
 
-                    assert(normal_map);
+                assert(normal_map);
 
-                    logprint("Material stuff", "Normal map '%s' for material '%s'\n", gltf_normal_name, gltf_material->name);
-                    auto normal_map_intensity = normal_texture->scale;
-                    logprint("Material stuff", "Normal map intensity is %f\n", normal_map_intensity);
+                logprint("Normal map", "Normal map '%s' for material '%s'\n", gltf_normal_name, gltf_material->name);
+                auto normal_map_intensity = normal_texture->scale;
+                logprint("Normal map", "Normal map intensity is %f\n", normal_map_intensity);
 
-                    // @Incomplete: How to use normal maps?
+                // @Incomplete: How to use normal maps?
 
-                    // material->normal_2024 = normal_map;
-                    // material->normal_intensity_2024 = normal_map_intensity;
-                }
+                // material->normal_2024 = normal_map;
+                // material->normal_intensity_2024 = normal_map_intensity;
+            }
 
-                // The ambient occlusion map.
-                auto ao_texture = &gltf_material->occlusion_texture;
-                if (ao_texture->texture)
-                {
-                    auto gltf_ao_name = ao_texture->texture->image->name;
-                    logprint("Material stuff", "Material '%s' has ambient occlusion texture '%s'!\n", gltf_material->name, gltf_ao_name);
+            // The ambient occlusion map.
+            auto ao_texture = &gltf_material->occlusion_texture;
+            if (ao_texture->texture)
+            {
+                auto gltf_ao_name = ao_texture->texture->image->name;
+                logprint("Ambient Occlusion", "Material '%s' has ambient occlusion texture '%s'!\n", gltf_material->name, gltf_ao_name);
 
-                    assert(0); // @Investigate: the 'red-guy.gltf' model should contains AO texture because in the file it definitely shows that there are AO textures.
-                }
+                assert(0);
+            }
+
+            // The emissive texture (sometimes, this will use the AO map)
+            auto emissive_texture = &gltf_material->emissive_texture;
+            if (emissive_texture->texture)
+            {
+                auto gltf_emissive_name = emissive_texture->texture->image->name;
+                logprint("Emissive", "Material '%s' has emissive texture '%s'\n", gltf_material->name, gltf_emissive_name);
             }
 
             if (gltf_material->has_pbr_specular_glossiness)
@@ -1207,6 +1237,7 @@ bool load_gltf_model_2024(Triangle_Mesh *triangle_mesh) // @Cleanup: Rename
     //
     i32 vertices_previous_lists = 0;
     i32 indices_previous_lists = 0;
+
     for (i32 it_index = 0; it_index < total_triangle_list_info; ++it_index)
     {
         auto sub_mesh = &parsed_gltf_data->meshes[it_index];
@@ -1228,8 +1259,17 @@ bool load_gltf_model_2024(Triangle_Mesh *triangle_mesh) // @Cleanup: Rename
         cgltf_accessor *textures_accessor  = NULL; // @Cleanup: Use the load_accessor_*()
         cgltf_accessor *colors_accessor    = NULL; // @Cleanup: Use the load_accessor_*()
 
+        //
+        // The invarient for these is that they must have the same count as the number of
+        // vertices for each triangle list. Given this, any vertex in Blender/Maya that
+        // has more than one UVs will be exported as multiple vertices in the same place.
+        // I don't know how I should feel about this, but the way GLTF format works is
+        // kind of like how GPU handle vertices so I can live with that.
+        //
         u32 *bone_influences_memory = NULL;
+        i64 bone_influences_count = 0;
         f32 *vertex_weights_memory  = NULL;
+        i64 weights_count = 0;
 
         i32 vertices_this_list = 0;
         for (i32 attrib_index = 0; attrib_index < primitive->attributes_count; ++attrib_index)
@@ -1260,7 +1300,7 @@ bool load_gltf_model_2024(Triangle_Mesh *triangle_mesh) // @Cleanup: Rename
                     if (!textures_accessor && (accessor->type == cgltf_type_vec2)) textures_accessor = accessor;
                 } break;
                 case cgltf_attribute_type_joints: {
-                    if (!bone_influences_memory) load_accessor_into_memory_buffer(accessor, &bone_influences_memory);
+                    if (!bone_influences_memory) load_accessor_into_memory_buffer(accessor, &bone_influences_memory, &bone_influences_count);
 
                     assert(cgltf_num_components(accessor->type) <= MAX_MATRICES_PER_VERTEX); // Should not exceed the maximum amount otherwise, we are in trouble.
 
@@ -1268,11 +1308,20 @@ bool load_gltf_model_2024(Triangle_Mesh *triangle_mesh) // @Cleanup: Rename
                     assert((component_type == cgltf_component_type_r_8) || (component_type == cgltf_component_type_r_8u));
                 } break;
                 case cgltf_attribute_type_weights: {
-                    if (!vertex_weights_memory) load_accessor_into_memory_buffer(accessor, &vertex_weights_memory);
+                    if (!vertex_weights_memory) load_accessor_into_memory_buffer(accessor, &vertex_weights_memory, &weights_count);
 
                     assert(accessor->component_type == cgltf_component_type_r_32f);
                 } break;
             }
+        }
+
+        //
+        // The number of vertex blend infos, or [bones influences and weights] must be the same as
+        // the total number of vertices.
+        //
+        if (bone_influences_memory || vertex_weights_memory) // Although we are doing an OR, both must be present at once.
+        {
+            assert((bone_influences_count == vertices_this_list) && (weights_count == vertices_this_list));
         }
 
         //
@@ -1303,6 +1352,7 @@ bool load_gltf_model_2024(Triangle_Mesh *triangle_mesh) // @Cleanup: Rename
             }
 
             // Texture UVs.
+            if (textures_accessor)
             {
                 // 
                 // @Speed: Becase we load flipped textures by default, so here,
@@ -1312,7 +1362,6 @@ bool load_gltf_model_2024(Triangle_Mesh *triangle_mesh) // @Cleanup: Rename
 
                 auto accessor = textures_accessor;
 
-                assert(accessor);
                 assert(accessor->buffer_view);
                 assert(!accessor->is_sparse);
                 
@@ -1393,8 +1442,8 @@ bool load_gltf_model_2024(Triangle_Mesh *triangle_mesh) // @Cleanup: Rename
 
                 for (i32 i = 0; i < vertices_this_list; ++i)
                 {
-                    auto ids     = &reinterpret_cast<u8*>(bone_influences_memory)[i * 4];
-                    auto weights = &vertex_weights_memory[i * 4];
+                    auto ids     = &reinterpret_cast<u8*>(bone_influences_memory)[i * MAX_MATRICES_PER_VERTEX];
+                    auto weights = &vertex_weights_memory[i * MAX_MATRICES_PER_VERTEX];
 
                     auto blend_info   = &triangle_mesh->skeleton_info->vertex_blend_info[v_offset + i];
                     auto num_matrices = 0;
@@ -1404,7 +1453,13 @@ bool load_gltf_model_2024(Triangle_Mesh *triangle_mesh) // @Cleanup: Rename
                         if (!weights[j]) continue; // If weight is 0, then that matrix doesn't influence the vertex.
 
                         auto piece = &blend_info->pieces[num_matrices];
-                        piece->matrix_index  = static_cast<i32>(ids[j]);
+
+                        // @Note: This index is the joint/skeleton node index
+                        // inside the joints array of the skin.
+                        auto matrix_index  = static_cast<i32>(ids[j]);
+                        assert(matrix_index < triangle_mesh->skeleton_info->skeleton_node_info.count);
+
+                        piece->matrix_index  = matrix_index;
                         piece->matrix_weight = weights[j];
 
                         num_matrices += 1;

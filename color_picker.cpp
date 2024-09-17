@@ -63,9 +63,9 @@ void get_watch_colors(Color_Picker_Theme *theme, Vector3 rgb,
         auto c = rgb * k;
         auto w = .15f;
 
-        c.x = std::clamp(c.x, 0.0f, 1.0f);
-        c.y = std::clamp(c.y, 0.0f, 1.0f);
-        c.z = std::clamp(c.z, 0.0f, 1.0f);
+        Clamp(&c.x, 0.0f, 1.0f);
+        Clamp(&c.y, 0.0f, 1.0f);
+        Clamp(&c.z, 0.0f, 1.0f);
 
         *over    = whiten(Vector4(c.x, c.y, c.z, 1), w);
         *pressed = whiten(Vector4(c.x, c.y, c.z, 1), .3f); // @Theme
@@ -334,7 +334,7 @@ bool /*changed*/ color_slider(Rect r, Color_Picker_Theme *theme, Color_Picker_St
         auto drag_y = mouse_y_float;
 
         auto t = (drag_y - r.y)/ r.h;
-        t = std::clamp(t, 0.0f, 1.0f);
+        Clamp(&t, 0.0f, 1.0f);
 
         auto pip_t = *value;
         auto dx = r.w * .1f;
@@ -463,14 +463,14 @@ bool /*changed*/ color_slider(Rect r, Color_Picker_Theme *theme, Color_Picker_St
             if (excess_top >= 0)
             {
                 alpha_top = 1 - (excess_top / fade_denom);
-                alpha_top = std::clamp(alpha_top, 0.0f, 1.0f);
+                Clamp(&alpha_top, 0.0f, 1.0f);
             }
 
             auto excess_bottom = fade_zone_bottom - y_bottom;
             if (excess_bottom >= 0)
             {
                 alpha_bottom = 1 - (excess_bottom / fade_denom);
-                alpha_bottom = std::clamp(alpha_bottom, 0.0f, 1.0f);
+                Clamp(&alpha_bottom, 0.0f, 1.0f);
             }
 
             auto q0 = left_arrow_tip;
@@ -952,7 +952,7 @@ Vector3 make_hsv(f32 h, Vector2 p, Vector2 s_vector, Vector2 v_vector) // @Incom
     auto v_new = shade(p2,  0.0/3.0f * TAU); // ???
     auto s_new = shade(p2, -1.0/4.0f * TAU);
 
-    s_new = std::clamp(s_new, 0.0f, 1.0f);
+    Clamp(&s_new, 0.0f, 1.0f);
     s_new = powf(s_new, .85f);
 
     return Vector3(h, s_new, v_new);
@@ -1032,9 +1032,9 @@ Vector3 hsv_to_rgb(Vector3 hsv)
     p.y = fabs(fract(cx + 2/3.0f) * 6 - 3) - 1;
     p.z = fabs(fract(cx + 1/3.0f) * 6 - 3) - 1;
 
-    p.x = std::clamp(p.x, 0.0f, 1.0f);
-    p.y = std::clamp(p.y, 0.0f, 1.0f);
-    p.z = std::clamp(p.z, 0.0f, 1.0f);
+    Clamp(&p.x, 0.0f, 1.0f);
+    Clamp(&p.y, 0.0f, 1.0f);
+    Clamp(&p.z, 0.0f, 1.0f);
 
     p.x = lerp(1, p.x, cy);
     p.y = lerp(1, p.y, cy);
@@ -1165,10 +1165,10 @@ Vector2 backsolve_disc_point_from_hsv(Color_Picker_State *state, Vector3 hsv)
     // This is becase s = sinf(tx * TAU * .25f);
     // So,            tx * TAU * .25f = asinf(s);
     // Therefore,     tx = asinf(s) * 4 / TAU;
-    s = std::clamp(s, 0.0f, 1.0f);
+    Clamp(&s, 0.0f, 1.0f);
     f32 tx = asinf(s) * (4.0f / TAU);
 
-    v = std::clamp(v, 0.0f, 1.0f);
+    Clamp(&v, 0.0f, 1.0f);
     f32 ty = asinf(v) * (4.0f / TAU);
 
     f32 alpha = 4 * (tx - .5f) * (tx - .5f);
@@ -1184,7 +1184,7 @@ Vector2 backsolve_disc_point_from_hsv(Color_Picker_State *state, Vector3 hsv)
     }
 
     f32 ux_squared = (alpha - alpha*beta) / one_minus_ab;
-    ux_squared = std::clamp(ux_squared, 0.0f, 1.0f);
+    Clamp(&ux_squared, 0.0f, 1.0f);
 
     f32 ux = sqrtf(ux_squared);
     f32 uy = (ty - .5f) * 2 * sqrtf(1 - ux_squared);
@@ -1333,7 +1333,7 @@ void update_ring_point(Color_Picker_State *state, Vector2 center, f32 r0, f32 r1
 
     auto len_orig = glm::length(delta);
     auto len = len_orig;
-    len = std::clamp(len, r0, r1);
+    Clamp(&len, r0, r1);
     auto inside = (r0 <= len_orig) && (len_orig <= r1);
 
     if (inside && !state->dragging_in_ring)
@@ -1358,7 +1358,7 @@ void update_disc_point(Color_Picker_State *state, Vector2 center, f32 radius)
     auto len_orig = glm::length(delta);
     auto len = len_orig;
 
-    len = std::clamp(len, 0.0f, radius);
+    Clamp(&len, 0.0f, radius);
     auto inside = len_orig <= radius;
 
     if (inside && !state->dragging_in_disc)

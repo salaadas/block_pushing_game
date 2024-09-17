@@ -180,8 +180,9 @@ String join(RArr<String> inputs,         String separator,
 
 //
 // Split
+ __attribute__((warn_unused_result))
 RArr<String> split(String text, String separator, bool reversed = false, i64 max_results = 0,
-                   bool skip_empty = false, bool keep_separator = false, Allocator = {}) __attribute__((warn_unused_result));
+                   bool skip_empty = false, bool keep_separator = false, Allocator = {});
 
 //
 // sprint

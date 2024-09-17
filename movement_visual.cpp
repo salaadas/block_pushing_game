@@ -278,7 +278,7 @@ void update_guy_position(Guy *guy, f32 dt)
         dv = 160.0f * SPEED_SCALE * dt;
 
         auto slowdown_factor = glm::length(visual_delta) / SLOWDOWN_DISTANCE;
-        slowdown_factor = std::clamp(slowdown_factor, 0.0f, 1.0f);
+        Clamp(&slowdown_factor, 0.0f, 1.0f);
 
         desired_vel *= slowdown_factor;
     }
@@ -340,7 +340,7 @@ void update_visual_position(Entity *e, f32 dt)
     if (v->move_type == Move_Type::TELEPORT)
     {
         auto t = v->elapsed / v->duration;
-        t = std::clamp(t, 0.0f, 1.0f);
+        Clamp(&t, 0.0f, 1.0f);
 
         // if (v->elapsed >= v->teleport_pre_time)
         {
@@ -385,7 +385,7 @@ void update_visual_position(Entity *e, f32 dt)
     else
     {
         auto t = v->elapsed / v->duration;
-        t = std::clamp(t, 0.0f, 1.0f);
+        Clamp(&t, 0.0f, 1.0f);
 
         e->visual_position = lerp(v->visual_start, v->visual_end, t);
 
@@ -431,7 +431,7 @@ void update_entities_visual_interpolation(Entity_Manager *manager, f32 dt)
             auto denom = glm::length(v->visual_start - v->visual_end);
             if (denom) t = glm::distance(v->visual_start, it->visual_position) / denom;
 
-            t = std::clamp(t, 0.0f, 1.0f);
+            Clamp(&t, 0.0f, 1.0f);
 
             v->elapsed = v->duration * t;
             continue;
