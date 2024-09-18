@@ -47,12 +47,12 @@ struct Pose_Channel
 
     // These are serialized:
     f32  time_multiplier = 1.0f;
-    bool should_loop = true;
-    bool completed = false; // This gets passed up to the animation player.
+    bool should_loop     = true;
+    bool completed       = false; // This gets passed up to the animation player.
     bool completed_state_propagated_through = false;
-    f64  current_time = 0;
+    f64  current_time       = 0;
     f64  animation_duration = 0; // Because we may unload the animation or just not have it loaded.
-    f32  end_time = 0; // Maybe shorter than the duration because this allows for playing a fraction of the animation.
+    f32  end_time           = 0; // Maybe shorter than the duration because this allows for playing a fraction of the animation.
 
     // These are not serialized:
     Sampled_Animation *animation = NULL;

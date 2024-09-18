@@ -29,6 +29,7 @@ struct Shader
     // Uniforms
     GLint        transform_loc;
     GLint   blend_matrices_loc;
+
     // Texture samplers
     GLint  diffuse_texture_loc;
     GLint lightmap_texture_loc;

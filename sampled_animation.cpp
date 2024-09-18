@@ -94,6 +94,9 @@ bool get_pose_at_time(T *output, f32 time_stamp, cgltf_animation_sampler *time_s
     else if constexpr (std::is_same<T, Vector4>::value)
     {
         // @Speed:
+        // @Incomplete: We should also neighborhood the quaternions here so that
+        // they are in the known-correct neighborhood. This is so that when 
+        // we play the animation in the animation player, we don't have to do it.
         auto q0 = Quaternion(transform0.w, transform0.x, transform0.y, transform0.z);
         auto q1 = Quaternion(transform1.w, transform1.x, transform1.y, transform1.z);
         q0      = nlerp(q0, q1, fraction);

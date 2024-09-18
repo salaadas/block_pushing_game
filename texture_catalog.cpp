@@ -41,7 +41,7 @@ void deinit_texture_catalog(Texture_Catalog *catalog)
 
 Texture_Map *make_placeholder(Texture_Catalog *catalog, String short_name, String full_path)
 {
-    Texture_Map *map = New<Texture_Map>(false);
+    Texture_Map *map = New<Texture_Map>();
     init_texture_map(map);
     map->name      = copy_string(short_name);
     map->full_path = copy_string(full_path);
@@ -66,7 +66,7 @@ void reload_asset(Texture_Catalog *catalog, Texture_Map *map)
     u8 *data = stbi_load((char*)c_path, &width, &height, &components, 0);
     if (!data)
     {
-        logprint("texture_catalog", "FAILED to load bitmap from path '%s'\n", temp_c_string(map->full_path));
+        logprint("texture_catalog", "FAILED to load bitmap from path '%s'\n", c_path);
         return;
     }
 

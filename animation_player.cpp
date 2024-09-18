@@ -168,7 +168,7 @@ Quaternion cmuratori_get_orientation(Matrix4 m)
     Vector3 my(m[0][1], m[1][1], m[2][1]);
     Vector3 mz(m[0][2], m[1][2], m[2][2]);
 
-    normalize_or_zero(&mx);
+    normalize_or_zero(&mx); // Normalize because we rotate around unit vectors.
     normalize_or_zero(&my);
     normalize_or_zero(&mz);
 

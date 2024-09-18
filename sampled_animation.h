@@ -23,7 +23,7 @@ struct Keyframe
     SArr<Xform_State> xform_states; // Has a count == 'nodes_info'.
 };
 
-struct Sampled_Animation
+struct Sampled_Animation // @Incomplete: Make this into a catalog.
 {
     SArr<Node_Info> nodes_info;
     SArr<Keyframe>  keyframes;

@@ -47,7 +47,10 @@ enum class Material_Flags : u32
     Lightmaped                        = 0x04,
     Remove_During_Reduction           = 0x10,
     Do_Not_Use_When_Computing_Normals = 0x20,
-    Detail                            = 0x40
+    Detail                            = 0x40,
+    Vertex_Lightmap                   = 0x80,
+    Ground                            = 0x100,
+    Solid                             = 0x200
 };
 
 enum class Material_Type
@@ -174,12 +177,7 @@ struct Triangle_Mesh
     //   at time stamp 1:54:37.
     // SArr<i32>     vertex_to_vertex_blend_info_map;
 
-    // @Temporary:
-    // @Temporary:
-    // @Temporary:
-    // @Temporary:
-    // This is for drawing the skeletal animation in software.
-    RArr<Vector3> skinned_vertices;
+    // @Temporary: Move this to animation_player?
     RArr<Matrix4> skinning_matrices;
 
     // LOD data:

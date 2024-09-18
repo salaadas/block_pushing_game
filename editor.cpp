@@ -16,5 +16,5 @@ void editor_handle_event(Event *event)
 
 void draw_editor()
 {
-    // draw_ui(); :IncompleteUI
+    draw_ui(); //  :IncompleteUI
 }

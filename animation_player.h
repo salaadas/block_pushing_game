@@ -20,7 +20,7 @@ struct Animation_Player
     // @Incomplete: Not using discontinuity info
     // RArr<Discontinuity_Info> discontinuity_info;
 
-    RArr<i32>     mesh_parent_indices;
+    RArr<i32>     mesh_parent_indices; // :( We have to reconstruct this dynamically, but if the info were in the mesh then we could just use it directly.
     Triangle_Mesh *mesh = NULL;
 
     f64 current_time = 0;

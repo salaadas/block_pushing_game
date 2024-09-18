@@ -15,6 +15,8 @@ Shader *shader_argb_no_texture;
 Shader *shader_argb_and_texture;
 Shader *shader_text;
 Shader *shader_basic_3d;
+Shader *shader_skinned_3d;
+Shader *shader_hdr_to_ldr;
 
 #define cat_find(catalog, name) catalog_find(&catalog, String(name));
 
@@ -29,10 +31,12 @@ Animation_Player *test_aplayer; // :DeprecateMe
 
 void init_shaders()
 {
-    shader_argb_no_texture  = cat_find(shader_catalog, "argb_no_texture"); assert(shader_argb_no_texture);
+    shader_argb_no_texture  = cat_find(shader_catalog, "argb_no_texture");  assert(shader_argb_no_texture);
     shader_argb_and_texture = cat_find(shader_catalog, "argb_and_texture"); assert(shader_argb_and_texture);
-    shader_text             = cat_find(shader_catalog, "text"); assert(shader_text);
-    shader_basic_3d         = cat_find(shader_catalog, "basic_3d"); assert(shader_basic_3d);
+    shader_text             = cat_find(shader_catalog, "text");             assert(shader_text);
+    shader_basic_3d         = cat_find(shader_catalog, "basic_3d");         assert(shader_basic_3d);
+    shader_skinned_3d       = cat_find(shader_catalog, "skinned_3d");       assert(shader_skinned_3d);
+    shader_hdr_to_ldr       = cat_find(shader_catalog, "hdr_to_ldr");       assert(shader_hdr_to_ldr);
 
     shader_argb_no_texture->backface_cull  = false;
     shader_argb_and_texture->backface_cull = false;
@@ -45,36 +49,56 @@ void init_shaders()
         skinning_test.full_path = String("data/models/tests/test_vampire.gltf");
         skinning_test.name = String("test_vampire");
         auto success = load_mesh_into_memory(&skinning_test);
+        assert(success);
 
         // Making the vbo and vao for the skinning test mesh.
         {
             auto mesh        = &skinning_test;
             auto count       = mesh->vertices.count;
-            auto dest_buffer = NewArray<Vertex_XCNUU>(count);
+            auto dest_buffer = NewArray<Vertex_XCNUUS>(count);
+
+            assert(mesh->skeleton_info->vertex_blend_info.count);
 
             i64 it_index = 0;
             for (auto &dest : dest_buffer)
             {
                 // Every mesh supposed to have a vertex, but what the heyy, consistency!!?!?!?
                 if (mesh->vertices) dest.position = mesh->vertices[it_index];
-                else dest.position = Vector3(0, 0, 0);
+                else                dest.position = Vector3(0, 0, 0);
 
                 if (mesh->colors)
                 {
                     auto c = mesh->colors[it_index];
                     c.w = 1.0f;
-
                     dest.color_scale = argb_color(c);
                 }
-                else dest.color_scale = 0xffffffff;
+                else
+                {
+                    dest.color_scale = 0xffffffff;
+                }
 
                 if (mesh->vertex_frames) dest.normal = mesh->vertex_frames[it_index].normal;
-                else dest.normal = Vector3(1, 0, 0);
+                else                     dest.normal = Vector3(1, 0, 0);
 
                 if (mesh->uvs) dest.uv0 = mesh->uvs[it_index];
-                else dest.uv0 = Vector2(0, 0);
+                else           dest.uv0 = Vector2(0, 0);
 
-                dest.uv1 = Vector2(0, 0);
+                // dest.uv1 = Vector2(0, 0);
+                dest.lightmap_uv = Vector2(0, 0);
+
+                u32     blend_indices = 0;
+                Vector4 blend_weights(0, 0, 0, 0);
+                auto blend = &mesh->skeleton_info->vertex_blend_info[it_index];
+                for (auto i = 0; i < blend->num_matrices; ++i) // @Speed:
+                {
+                    auto piece = &blend->pieces[i];
+
+                    blend_indices |= static_cast<u8>(piece->matrix_index) << ((i) * 8);
+                    blend_weights[i] = piece->matrix_weight;
+                }
+
+                dest.blend_weights = blend_weights;
+                dest.blend_indices = blend_indices;
             
                 it_index += 1;
             }
@@ -179,13 +203,14 @@ void do_block(Vector3 p0, Vector3 p1, Vector3 p2, Vector3 p3,
 void set_material_color(Vector4 color)
 {
     auto shader = current_shader;
-    assert((shader == shader_basic_3d));
+    assert((shader == shader_basic_3d) || (shader == shader_skinned_3d));
 
     auto loc = glGetUniformLocation(shader->program, "material_color");
     if (loc < 0)
     {
         logprint("set_material_color", "Could not find the material color for current shader '%s'.\n", temp_c_string(shader->name));
         DumpGLErrors("set_material_color");
+
         return;
     }
 
@@ -235,6 +260,7 @@ void draw_block_entity_at(Vector3 position, Texture_Map *map, f32 radius,
     p6.z += 1;
     p7.z += 1;
 
+    set_shader(shader_basic_3d);
     set_texture(String("diffuse_texture"), map);
 
     Vector4 fcolor;
@@ -415,11 +441,15 @@ void update_orientation(Entity *e)
     get_ori_from_rot(&e->orientation, Vector3(0, 0, 1), e->theta_current * (TAU / 360));
 }
 
-void mesh_draw(Triangle_Mesh *mesh, Vector3 position, f32 mesh_scale, Quaternion ori, Vector4 *scale_color = NULL, Vector4 *override_color = NULL, bool should_render_immediate = false) // :DeprecateMe: remove the immediate thing.
+void mesh_draw(Triangle_Mesh *mesh, Vector3 position, f32 mesh_scale, Quaternion ori, Vector4 *scale_color = NULL, Vector4 *override_color = NULL)
 {
     assert(mesh);
 
-    set_shader(shader_basic_3d);
+    // @Cleanup: This procedure is kinda a "give me a mesh and I will figure out how to draw",
+    // so we should think about making a struct with the settings and stuff to pass to this
+    // if we need to do more later (when doing PBR materials).
+    if (!mesh->skinning_matrices.count) set_shader(shader_basic_3d);   // No skinning.
+    else                                set_shader(shader_skinned_3d);
 
     // @Speed:
     Quaternion mesh_correction;
@@ -443,7 +473,19 @@ void mesh_draw(Triangle_Mesh *mesh, Vector3 position, f32 mesh_scale, Quaternion
 
     glBindBuffer(GL_ARRAY_BUFFER,         mesh->vertex_vbo);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh->index_vbo);
-    set_vertex_format_to_XCNUU(current_shader);
+
+    if (!mesh->skinning_matrices.count)
+    {
+        set_vertex_format_to_XCNUU(current_shader);
+    }
+    else
+    {
+        set_vertex_format_to_XCNUUS(current_shader); // @Cleanup: Do something about this....
+
+        // Blend matrices or skinning matrices that we got from skin_mesh().
+        auto blend_matrices_ptr = &(mesh->skinning_matrices[0][0][0]);
+        glUniformMatrix4fv(current_shader->blend_matrices_loc, mesh->skinning_matrices.count, GL_FALSE, blend_matrices_ptr);
+    }
 
     for (i32 list_i = 0; list_i < mesh->triangle_list_info.count; ++list_i)
     {
@@ -471,20 +513,19 @@ void mesh_draw(Triangle_Mesh *mesh, Vector3 position, f32 mesh_scale, Quaternion
 
         set_material_color(fcolor);
 
-        if (!should_render_immediate)
-        {
-            auto offset = list.first_index * sizeof(mesh->index_array[0]);
-            glDrawElements(GL_TRIANGLES, list.num_indices, GL_UNSIGNED_INT, reinterpret_cast<void*>(offset));
-        }
-        else // Render stuff in immediate mode to debug skeletal animations. @Incomplete: Do this in the shader.
+        auto offset = list.first_index * sizeof(mesh->index_array[0]);
+        glDrawElements(GL_TRIANGLES, list.num_indices, GL_UNSIGNED_INT, reinterpret_cast<void*>(offset));
+
+        // Render stuff in immediate mode to debug skeletal animations.
+/*
         {
             auto vertices = mesh->vertices;
-            if (mesh->skinned_vertices.count)
-            {
-                // @Cleanup: Make a assignment operator for RArr to SArr?
-                vertices.count = mesh->skinned_vertices.count;
-                vertices.data  = mesh->skinned_vertices.data;
-            }
+            // if (mesh->skinned_vertices.count)
+            // {
+            //     // @Cleanup: Make a assignment operator for RArr to SArr?
+            //     vertices.count = mesh->skinned_vertices.count;
+            //     vertices.data  = mesh->skinned_vertices.data;
+            // }
 
             immediate_begin();
             for (i32 i = list.first_index; i < (list.first_index + list.num_indices); i += 3)
@@ -522,6 +563,7 @@ void mesh_draw(Triangle_Mesh *mesh, Vector3 position, f32 mesh_scale, Quaternion
             }
             immediate_flush();
         }
+*/
     }
 
     object_to_world_matrix = Matrix4(1.0);
@@ -571,45 +613,13 @@ void skin_mesh(Animation_Player *player)
     auto mesh = player->mesh;
     assert(mesh->skeleton_info);
     
-    array_resize(&mesh->skinned_vertices, mesh->vertices.count);
-
     auto num_bones = mesh->skeleton_info->skeleton_node_info.count;
     array_resize(&mesh->skinning_matrices, num_bones);
 
-    // @Cleanup: skinning_matrices should be on Animation_Player.
+    // @Temporary: skinning_matrices should be on Animation_Player?
     for (auto i = 0; i < num_bones; ++i)
     {
         mesh->skinning_matrices[i] = player->output_matrices[i] * mesh->skeleton_info->skeleton_node_info[i].rest_object_space_to_object_space;
-    }
-
-    i64 i = 0;
-    for (auto v : mesh->vertices)
-    {
-        auto blend = &mesh->skeleton_info->vertex_blend_info[i];
-
-        // @Incomplete: Missing normals and tangents blend.
-        Vector4 r(0.0f);
-        Vector4 v4(v.x, v.y, v.z, 1);
-
-        for (auto j = 0; j < blend->num_matrices; ++j)
-        {
-            // @Speed:
-            auto piece = blend->pieces[j];
-
-            auto tv = mesh->skinning_matrices[piece.matrix_index] * v4;
-            r += tv * piece.matrix_weight;
-        }
-
-        if (r.w)
-        {
-            r.x /= r.w;
-            r.y /= r.w;
-            r.z /= r.w;
-        }
-
-        mesh->skinned_vertices[i] = Vector3(r.x, r.y, r.z);
-
-        i += 1;
     }
 }
 
@@ -748,7 +758,7 @@ void draw_game_view_3d()
             }
             */
 
-            mesh_draw(&skinning_test, Vector3(8, 2, 0.f), 1.f, Quaternion(1, 0, 0, 0), NULL, NULL, true);
+            mesh_draw(&skinning_test, Vector3(8, 2, 0.f), 1.f, Quaternion(1, 0, 0, 0), NULL, NULL);
         }
 
         immediate_flush();
@@ -790,7 +800,26 @@ void draw_game_view_3d()
     }
 
     // ================================================================
-    
+
+    // Resolve to LDR. Everything after here uses the normal RGB color space.
+    {
+        rendering_2d_right_handed();
+        set_shader(shader_hdr_to_ldr);
+
+        f32 w   = (f32)(the_offscreen_buffer->width);
+        f32 h   = (f32)(the_offscreen_buffer->height);
+        auto p0 = Vector2(0,  0);
+        auto p1 = Vector2(w,  0);
+        auto p2 = Vector2(w,  h);
+        auto p3 = Vector2(0,  h);
+
+        set_texture(String("diffuse_texture"), the_offscreen_buffer);
+
+        immediate_begin();
+        immediate_quad(p0, p1, p2, p3, 0xffffffff);
+        immediate_flush();
+    }
+
     rendering_2d_right_handed();
 
     // @Note: Draw the hud for the editor!
@@ -845,7 +874,8 @@ void draw_game_view_3d()
     glClearColor(.5, .5, .5, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    set_shader(shader_argb_and_texture);
+    set_shader(shader_argb_and_texture); // @Incomplete: Resolve to ldr before this point.
+    // set_shader(shader_hdr_to_ldr);
 
     f32 back_buffer_width  = the_back_buffer->width;
     f32 back_buffer_height = the_back_buffer->height;

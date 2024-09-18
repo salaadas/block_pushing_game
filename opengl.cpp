@@ -139,6 +139,64 @@ void DumpProgramInfoLog(GLuint program, String name)
     }
 }
 
+// @Cleanup: @Cutnpaste from set_vertex_format_to_XCNUU, this is only temporary before
+// we figure out the render pipeline.
+void set_vertex_format_to_XCNUUS(Shader *shader)
+{
+    u32 stride = sizeof(Vertex_XCNUUS);
+
+    if (shader->position_loc != -1)
+    {
+        DumpGLErrors("position - beforehand abc");
+        glEnableVertexAttribArray(shader->position_loc);
+        DumpGLErrors("position - mid");
+        glVertexAttribPointer(shader->position_loc, 3, GL_FLOAT, false, stride, xxx OFFSET_position);
+        DumpGLErrors("position - after");
+    }
+
+    if (shader->color_scale_loc != -1)
+    {
+        glVertexAttribPointer(shader->color_scale_loc, 4, GL_UNSIGNED_BYTE, true, stride, xxx OFFSET_color_scale);
+        glEnableVertexAttribArray(shader->color_scale_loc);
+        DumpGLErrors("colors");
+    }
+
+    if (shader->normal_loc != -1)
+    {
+        glVertexAttribPointer(shader->normal_loc, 3, GL_FLOAT, false, stride, xxx OFFSET_normal);
+        glEnableVertexAttribArray(shader->normal_loc);
+        DumpGLErrors("normal");
+    }
+
+    if (shader->uv_0_loc != -1)
+    {
+        glVertexAttribPointer(shader->uv_0_loc, 2, GL_FLOAT, false, stride, xxx OFFSET_uv0);
+        glEnableVertexAttribArray(shader->uv_0_loc);
+        DumpGLErrors("uv0");
+    }
+
+    if (shader->lightmap_uv_loc != -1)
+    {
+        glVertexAttribPointer(shader->lightmap_uv_loc, 2, GL_FLOAT, false, stride, xxx OFFSET_lightmap_uv);
+        glEnableVertexAttribArray(shader->lightmap_uv_loc);
+        DumpGLErrors("Lightmap uv");
+    }
+
+    if (shader->blend_weights_loc != -1)
+    {
+        glVertexAttribPointer(shader->blend_weights_loc, 4, GL_FLOAT, true, stride, xxx OFFSET_blend_weights);
+        glEnableVertexAttribArray(shader->blend_weights_loc);
+        DumpGLErrors("Blend weights");
+    }
+
+    if (shader->blend_indices_loc != -1)
+    {
+        glVertexAttribIPointer(shader->blend_indices_loc, 4, GL_UNSIGNED_BYTE, stride, xxx OFFSET_blend_indices);
+        glEnableVertexAttribArray(shader->blend_indices_loc);
+        DumpGLErrors("Blend indices");
+    }
+}
+
 void set_vertex_format_to_XCNUU(Shader *shader)
 {
     vertex_format_set_to_XCNUU = true;
@@ -190,11 +248,9 @@ void set_vertex_format_to_XCNUU(Shader *shader)
         DumpGLErrors("uv1");
     }
 
-    // if (shader->blend_weights_loc != -1)
-    //     glDisableVertexAttribArray(shader->blend_weights_loc);
-
-    // if (shader->blend_indices_loc != -1)
-    //     glDisableVertexAttribArray(shader->blend_indices_loc);
+    // Disabling these because if they exists, they may interfere with the other vertex attributes.
+    if (shader->blend_weights_loc != -1) glDisableVertexAttribArray(shader->blend_weights_loc);
+    if (shader->blend_indices_loc != -1) glDisableVertexAttribArray(shader->blend_indices_loc);
 }
 
 u32 argb_color(Vector4 color)
@@ -685,6 +741,7 @@ void set_shader(Shader *shader)
 
     current_shader = shader;
 
+    // If no shader, we bail.
     if (!shader)
     {
         glUseProgram(0);
@@ -692,7 +749,7 @@ void set_shader(Shader *shader)
         return;
     }
 
-
+    // Using the shader program.
     if (shader->program >= 0)
     {
         // printf("       Set_shader, program %s\n", temp_c_string(shader->name));
@@ -701,7 +758,7 @@ void set_shader(Shader *shader)
         refresh_transform();
     }
 
-
+    // Alpha blend stuff.
     if (shader->alpha_blend)
     {
         glEnable(GL_BLEND);
@@ -709,7 +766,7 @@ void set_shader(Shader *shader)
     }
     else glDisable(GL_BLEND);
 
-
+    // Depth testing stuff.
     if (shader->depth_test)
     {
         glEnable(GL_DEPTH_TEST);
@@ -717,14 +774,14 @@ void set_shader(Shader *shader)
     }
     else glDisable(GL_DEPTH_TEST);
 
-
+    // Depth write.
     if (shader->depth_write)
     {
         glDepthMask(GL_TRUE);
     }
     else glDepthMask(GL_FALSE);
 
-
+    // Backface culling.
     if (shader->backface_cull)
     {
         glEnable(GL_CULL_FACE);
@@ -790,15 +847,13 @@ void size_depth_target(Texture_Map *map)
 */
 }
 
-my_pair<Texture_Map*, Texture_Map*> create_texture_rendertarget(i32 width, i32 height,
-                                                                bool do_depth_target,
-                                                                bool do_hdr)
+my_pair<Texture_Map*, Texture_Map*> create_texture_rendertarget(i32 width, i32 height, bool do_depth_target, bool do_hdr)
 {
     auto map = New<Texture_Map>(false);
     init_texture_map(map);
     map->width  = width;
     map->height = height;
-    map->dirty = false;
+    map->dirty  = false;
     // map->format = TEXTURE_FORMAT_SYSTEM_SPECIFIC;
 
     Texture_Map *depth_map = NULL;
@@ -856,15 +911,13 @@ void set_render_target(u32 index, Texture_Map *map, Texture_Map *depth_map)
 
         if (multisampling)
         {
-            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + index,
-                                   GL_TEXTURE_2D_MULTISAMPLE, map->id, 0);
-            // glCheckFramebufferStatus(GL_TEXTURE_2D_MULTISAMPLE);
-            // DumpGLErrors("check");
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + index, GL_TEXTURE_2D_MULTISAMPLE, map->id, 0);
+            glCheckFramebufferStatus(GL_TEXTURE_2D_MULTISAMPLE);
+            DumpGLErrors("check");
         }
         else
         {
-            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + index,
-                                   GL_TEXTURE_2D, map->id, 0);
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + index, GL_TEXTURE_2D, map->id, 0);
             DumpGLErrors("check non-multisampled color_map");
         }
 
@@ -877,8 +930,6 @@ void set_render_target(u32 index, Texture_Map *map, Texture_Map *depth_map)
             glDepthMask(GL_TRUE);
         }
 
-        // SArr<GLenum, 1> draw_buffers;
-        // draw_buffers = {GL_COLOR_ATTACHMENT0};
         GLenum draw_buffers[] = {GL_COLOR_ATTACHMENT0};
         glDrawBuffers(1, draw_buffers);
         glViewport(0, 0, map->width, map->height);
@@ -893,7 +944,7 @@ Texture_Map *last_applied_mask_map = NULL;
 
 Texture_Map *create_texture(Bitmap *data)
 {
-    auto map = New<Texture_Map>(false);
+    auto map = New<Texture_Map>();
     map->width  = data->width;
     map->height = data->height;
     map->data   = data;
@@ -915,7 +966,10 @@ void update_texture(Texture_Map *map)
 
     glBindTexture(GL_TEXTURE_2D, map->id);
 
-    GLenum gl_dest_format   = GL_RGBA8; // GL_SRGB8_ALPHA8; @Fixme: This is wrong, we actually want SRGB8_ALPHA8
+    // GLenum gl_dest_format   = GL_RGBA8; // GL_SRGB8_ALPHA8; @Fixme: This is wrong, we actually want SRGB8_ALPHA8 (sometimes)...
+
+    GLenum gl_dest_format   = map->is_srgb ? GL_SRGB8_ALPHA8 : GL_RGBA8;
+
     GLenum gl_source_format = GL_RGBA;
     GLenum gl_type          = GL_UNSIGNED_BYTE;
     i32    alignment        = 4;
@@ -926,22 +980,15 @@ void update_texture(Texture_Map *map)
         {
             // Does nothing, because this is already handled.
         } break;
-        case Texture_Format::ARGB8888_NO_SRGB:
+        case Texture_Format::ARGB8888_NO_SRGB: // @Incomplete: This is a dead branch right now.
         {
             gl_dest_format   = GL_RGBA8;
             gl_source_format = GL_RGBA;
         } break;
         case Texture_Format::RGB888:
         {
-            // I think we should use GL_SRGB8 for gamma correction
-            // But I'm not totally sure.... @Temporary
-            //
-            // @Fixme: We actually want the destination to be SRGB8
-            // However, we are not correct handling hdr. So, that
-            // is the reason why the red dude model has darker color.
-            // 
-            // gl_dest_format   = GL_SRGB8;
-            gl_dest_format   = GL_RGB8;
+            gl_dest_format   = map->is_srgb ? GL_SRGB8 : GL_RGB8;
+            // gl_dest_format   = GL_RGB8;
             gl_source_format = GL_RGB;
             alignment        = 1;
         } break;
@@ -953,7 +1000,7 @@ void update_texture(Texture_Map *map)
         } break;
         case Texture_Format::R8:
         {
-            gl_dest_format   = GL_R8; // GL_R8;
+            gl_dest_format   = GL_R8;
             gl_source_format = GL_RED;
             gl_type          = GL_UNSIGNED_BYTE;
         } break;

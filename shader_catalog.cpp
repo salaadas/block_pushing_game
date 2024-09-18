@@ -12,9 +12,10 @@ void init_shader(Shader *shader)
     shader->normal_loc        = 2;
     shader->uv_0_loc          = 3;
     shader->uv_1_loc          = 4;
-    shader->lightmap_uv_loc   = 5;
-    shader->blend_weights_loc = -1;
-    shader->blend_indices_loc = -1;
+
+    shader->lightmap_uv_loc   = 4;
+    shader->blend_weights_loc = 5;
+    shader->blend_indices_loc = 6;
 
     shader->diffuse_texture_wraps = true;
     shader->textures_point_sample = true;
@@ -29,7 +30,6 @@ void init_shader(Shader *shader)
 
 void init_shader_catalog(Shader_Catalog *catalog)
 {
-    // @Fixme: Loading from the folder names 'my_name' for now
     catalog->base.my_name = String("shaders");
     array_add(&catalog->base.extensions, String("gl"));
 
@@ -75,10 +75,8 @@ bool load_shader_from_memory(String shader_text, String short_name, Shader *shad
         char *c_s_text = (char*)to_c_string(shader_text);
         defer { my_free(c_s_text); };
 
-        String vert_string = sprint(String("#version 430 core\n#define VERTEX_SHADER\n#define COMM out\n%s"),
-                                    c_s_text);
-        String frag_string = sprint(String("#version 430 core\n#define FRAGMENT_SHADER\n#define COMM in\n%s"),
-                                    c_s_text);
+        String vert_string = sprint(String("#version 430 core\n#define VERTEX_SHADER\n#define COMM out\n%s"), c_s_text);
+        String frag_string = sprint(String("#version 430 core\n#define FRAGMENT_SHADER\n#define COMM in\n%s"), c_s_text);
 
         GLint vert_length = vert_string.count;
         GLint frag_length = frag_string.count;

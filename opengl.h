@@ -48,7 +48,7 @@ struct Vertex_XCNUUS
     Vector2 lightmap_uv;
 
     Vector4 blend_weights;
-    u32     blend_indices;
+    u32     blend_indices; // This is actually a Vector4 of unsigned bytes inside the shader.
 };
 
 // @Hack @Temporary: probably not a good idea to hardcode it this way...
@@ -139,9 +139,7 @@ Texture_Map *create_texture(Bitmap *data);
 void set_texture(String texture_name, Texture_Map *map);
 void update_texture(Texture_Map *map);
 
-my_pair<Texture_Map*, Texture_Map*> create_texture_rendertarget(i32 width, i32 height,
-                                                                bool do_depth_target = false,
-                                                                bool do_hdr = false);
+my_pair<Texture_Map*, Texture_Map*> create_texture_rendertarget(i32 width, i32 height, bool do_depth_target = false, bool do_hdr = false);
 void set_render_target(u32 index, Texture_Map *map, Texture_Map *depth_map = NULL);
 void size_color_target(Texture_Map *map, bool do_hdr);
 void size_depth_target(Texture_Map *map);
@@ -150,3 +148,4 @@ my_pair<i32, i32> get_mouse_pointer_position(GLFWwindow *window, bool right_hand
 my_pair<i32, i32> render_target_mouse_pointer_position(GLFWwindow *window, bool right_handed);
 
 void set_vertex_format_to_XCNUU(Shader *shader);
+void set_vertex_format_to_XCNUUS(Shader *shader); // @Cleanup: Remove this.

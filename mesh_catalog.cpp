@@ -526,6 +526,11 @@ Triangle_Mesh *make_placeholder(Mesh_Catalog *catalog, String short_name, String
     return mesh;
 }
 
+void free_resources(Triangle_Mesh *mesh)
+{
+    // @Incomplete: Freeing the mesh here.
+}
+
 void reload_asset(Mesh_Catalog *catalog, Triangle_Mesh *mesh)
 {
     if (mesh->loaded)
@@ -621,118 +626,6 @@ cgltf_sampler *get_sampler_of_image(cgltf_data *parsed_gltf_data, i64 image_inde
     return NULL;
 }
 
-inline
-void read_normals_from_accessor(u8 *dest, cgltf_accessor *accessor, i32 offset, i32 strides_as_amount_of_floats)
-{
-    assert(accessor);
-    assert(accessor->buffer_view);
-    assert(!accessor->is_sparse);
-
-    auto element = cgltf_buffer_view_data(accessor->buffer_view);
-    assert(element);
-    element += accessor->offset;
-
-    auto floats_per_element = cgltf_num_components(accessor->type);
-    assert((accessor->component_type == cgltf_component_type_r_32f) && (accessor->stride == floats_per_element * sizeof(f32)));
-
-    auto input_data  = reinterpret_cast<f32*>(const_cast<u8*>(element));
-    auto output_data = reinterpret_cast<f32*>(dest + offset);
-
-    for (i64 i = 0; i < accessor->count; ++i)
-    {
-        auto value = input_data + (i * floats_per_element);
-        output_data[0] = value[0];
-        output_data[1] = value[1];
-        output_data[2] = value[2];
-
-        output_data += strides_as_amount_of_floats;
-    }
-}
-
-inline
-void read_frame3_from_accessor(u8 *dest, i32 total_vertices, cgltf_accessor *normals_accessor, cgltf_accessor *tangents_accessor)
-{
-    assert(normals_accessor);
-
-    //
-    // The accessor in GLTF only has data for normals and tangents, so we load both of
-    // them and calculate the bitangent ourselves.
-    //
-    // @Speed: Totally unoptimized.
-    //
-
-    assert(total_vertices == normals_accessor->count);
-
-    auto normals_offset = offsetof(Frame3, normal);
-    auto frame3_stride_in_floats = sizeof(Frame3) / sizeof(f32);
-    read_normals_from_accessor(dest, normals_accessor, normals_offset, frame3_stride_in_floats);
-
-    if (tangents_accessor)
-    {
-        // If you have tangents, you better have the right amount.
-        assert(total_vertices == tangents_accessor->count);
-
-        //
-        // We are not using read_floats_with_offsets_from_accessor, because
-        // the tangents we are reading from contains 4 elements, while we
-        // only care about three, and the last one is just the scalar for the
-        // Vector3 made up of the first 3. So we are @Cutnpaste'ing again.
-        //
-        auto accessor = tangents_accessor;
-        assert(accessor->buffer_view);
-        assert(!accessor->is_sparse);
-
-        auto element = cgltf_buffer_view_data(accessor->buffer_view);
-        assert(element);
-        element += accessor->offset;
-
-        auto floats_per_element = cgltf_num_components(accessor->type);
-        assert((accessor->component_type == cgltf_component_type_r_32f) && (accessor->stride == floats_per_element * sizeof(f32)));
-
-        auto input_data = reinterpret_cast<f32*>(const_cast<u8*>(element));
-
-        auto tangents_offset = offsetof(Frame3, tangent);
-        auto tangents_output = reinterpret_cast<f32*>(dest + tangents_offset);
-
-        auto bitangents_offset = offsetof(Frame3, bitangent);
-        auto bitangents_output = reinterpret_cast<f32*>(dest + bitangents_offset);
-
-        auto normals_lookup = reinterpret_cast<f32*>(dest + normals_offset);
-
-        for (i64 i = 0; i < accessor->count; ++i)
-        {
-            auto value = input_data + (i * floats_per_element);
-            auto t = Vector3(value[0], value[1], value[2]) * value[3];
-
-            tangents_output[0] = t.x;
-            tangents_output[1] = t.y;
-            tangents_output[2] = t.z;
-
-            auto norm  = Vector3(normals_lookup[0], normals_lookup[1], normals_lookup[2]);
-            auto bitan = glm::cross(norm, t);
-            bitangents_output[0] = bitan.x;
-            bitangents_output[1] = bitan.y;
-            bitangents_output[2] = bitan.z;
-
-            tangents_output   += frame3_stride_in_floats;
-            normals_lookup    += frame3_stride_in_floats;
-            bitangents_output += frame3_stride_in_floats;
-        }
-    }
-}
-
-inline
-bool read_floats_from_accessor(u8 *dest, cgltf_accessor *accessor)
-{
-    if (!accessor) return false;
-
-    const auto FLOATS_COUNT = accessor->count * cgltf_num_components(accessor->type);
-    auto unpacked_amount = cgltf_accessor_unpack_floats(accessor, reinterpret_cast<f32*>(dest), FLOATS_COUNT);
-    assert(unpacked_amount == FLOATS_COUNT); // @Cleanup: Do error logging instead of fat assert?
-
-    return true;
-}
-
 //
 // Given an accessor (in GLTF, this is the main way to read data), we load the
 // copy the content of that accessor (we are not allocating any data, just assigning
@@ -754,26 +647,6 @@ void load_accessor_into_memory_buffer(cgltf_accessor *accessor, T **memory_buffe
     if (desired_count) *desired_count = accessor->count;    
     if (desired_type)  *desired_type  = accessor->type;
 }
-
-/*
-inline
-i32 flip_gltf_skeleton_node_index(Skeleton_Info *info, i64 gltf_node_index_globally)
-{
-    //
-    // Flipping the GLTF node index, so that our canonical index has the root/hip as 0 instead of the last index.
-    //
-
-    auto skeleton_nodes_count = info->skeleton_node_info.count;
-    auto flipped_index = skeleton_nodes_count - 1 - gltf_node_index_globally;
-
-    // @Fixme: Do we need a node to joint index? Because I think this could go overbound.
-
-    assert(flipped_index >= 0);
-    assert(flipped_index < skeleton_nodes_count);
-
-    return flipped_index;
-}
-*/
 
 bool load_gltf_model_2024(Triangle_Mesh *triangle_mesh) // @Cleanup: Rename
 {
@@ -928,10 +801,19 @@ bool load_gltf_model_2024(Triangle_Mesh *triangle_mesh) // @Cleanup: Rename
             auto texture_name = String(gltf_image->name); // Using the term texture_name because we are using this variable to find stuff in the texture catalog.
             auto texture_map  = catalog_find(&texture_catalog, texture_name);
 
+            //
+            // :sRGB
+            // @Fixme: @Hack: We are straight up making every texture we loaded a sRGB thing. This is wrong
+            // because not every texture in the model is sRGB (although most of them are).
+            //
             if (texture_map)
             {
                 // printf("Texture map '%s' was already loaded!\n", temp_c_string(texture_map->name));
                 textures_lookup[gltf_image_index] = texture_map;
+
+                textures_lookup[gltf_image_index]->is_srgb = true; // :sRGB
+                textures_lookup[gltf_image_index]->dirty = true; // :sRGB
+                
                 continue;
             }
 
@@ -942,6 +824,9 @@ bool load_gltf_model_2024(Triangle_Mesh *triangle_mesh) // @Cleanup: Rename
 
                 my_register_loose_file<Texture_Map>(&texture_catalog.base, texture_name, texture_path_relative_to_exe);
                 textures_lookup[gltf_image_index] = catalog_find(&texture_catalog, texture_name); // NULL means look into the texture catalog and find me.
+
+                textures_lookup[gltf_image_index]->is_srgb = true; // :sRGB
+                textures_lookup[gltf_image_index]->dirty = true; // :sRGB
             }
             else
             {
@@ -993,6 +878,9 @@ bool load_gltf_model_2024(Triangle_Mesh *triangle_mesh) // @Cleanup: Rename
                         update_texture(resulting_map);
 
                         textures_lookup[gltf_image_index] = resulting_map;
+
+                        textures_lookup[gltf_image_index]->is_srgb = true; // :sRGB
+                        textures_lookup[gltf_image_index]->dirty = true; // :sRGB
                     }
                 }
                 else
@@ -1236,7 +1124,7 @@ bool load_gltf_model_2024(Triangle_Mesh *triangle_mesh) // @Cleanup: Rename
     // Pass 5: Process the triangle list infos
     //
     i32 vertices_previous_lists = 0;
-    i32 indices_previous_lists = 0;
+    i32 indices_previous_lists  = 0;
 
     for (i32 it_index = 0; it_index < total_triangle_list_info; ++it_index)
     {
@@ -1250,17 +1138,25 @@ bool load_gltf_model_2024(Triangle_Mesh *triangle_mesh) // @Cleanup: Rename
         auto primitive = &sub_mesh->primitives[primitive_index];
 
         //
-        // Getting the accessors to the positions, colors, textures,...
-        // so that we can load the values from there to the Triangle_Mesh.
+        // These are the memory buffers to the vertices data for this triangle list.
+        // The *_counts are really just for validating the data of the model.
         //
-        cgltf_accessor *positions_accessor = NULL; // @Cleanup: Use the load_accessor_*()
-        cgltf_accessor *normals_accessor   = NULL; // @Cleanup: Use the load_accessor_*()
-        cgltf_accessor *tangents_accessor  = NULL; // @Cleanup: Use the load_accessor_*()
-        cgltf_accessor *textures_accessor  = NULL; // @Cleanup: Use the load_accessor_*()
-        cgltf_accessor *colors_accessor    = NULL; // @Cleanup: Use the load_accessor_*()
+        f32 *positions_memory = NULL;
+
+        f32 *normals_memory = NULL;
+        i64  normals_count;
+
+        f32 *tangents_memory = NULL;
+        i64  tangents_count;
+
+        f32 *colors_memory = NULL;
+        i64  colors_count;
+
+        f32 *texture_uvs_memory = NULL;
+        i64  texture_uvs_count;
 
         //
-        // The invarient for these is that they must have the same count as the number of
+        // The invariant for these is that they must have the same count as the number of
         // vertices for each triangle list. Given this, any vertex in Blender/Maya that
         // has more than one UVs will be exported as multiple vertices in the same place.
         // I don't know how I should feel about this, but the way GLTF format works is
@@ -1268,10 +1164,11 @@ bool load_gltf_model_2024(Triangle_Mesh *triangle_mesh) // @Cleanup: Rename
         //
         u32 *bone_influences_memory = NULL;
         i64 bone_influences_count = 0;
+        i64 num_bone_influences_per_vertex = 0;
         f32 *vertex_weights_memory  = NULL;
         i64 weights_count = 0;
 
-        i32 vertices_this_list = 0;
+        i64 vertices_this_list = 0;
         for (i32 attrib_index = 0; attrib_index < primitive->attributes_count; ++attrib_index)
         {
             auto attrib   = &primitive->attributes[attrib_index];
@@ -1281,34 +1178,54 @@ bool load_gltf_model_2024(Triangle_Mesh *triangle_mesh) // @Cleanup: Rename
             {
                 // Reading the vertices for this sub-mesh.
                 case cgltf_attribute_type_position: {
-                    if (!positions_accessor && (accessor->type == cgltf_type_vec3))
+                    if (!positions_memory && (accessor->type == cgltf_type_vec3))
                     {
-                        vertices_this_list = accessor->count;
-                        positions_accessor = accessor;
+                        assert(accessor->component_type == cgltf_component_type_r_32f);
+                        load_accessor_into_memory_buffer(accessor, &positions_memory, &vertices_this_list);
                     }
                 } break;
                 case cgltf_attribute_type_normal: {
-                    if (!normals_accessor && (accessor->type == cgltf_type_vec3)) normals_accessor = accessor;
+                    if (!normals_memory && (accessor->type == cgltf_type_vec3))
+                    {
+                        assert(accessor->component_type == cgltf_component_type_r_32f);
+                        load_accessor_into_memory_buffer(accessor, &normals_memory, &normals_count);
+                    }
                 } break;
                 case cgltf_attribute_type_tangent: {
-                    if (!tangents_accessor && (accessor->type == cgltf_type_vec4)) tangents_accessor = accessor;
+                    if (!tangents_memory && (accessor->type == cgltf_type_vec4))
+                    {
+                        assert(accessor->component_type == cgltf_component_type_r_32f);
+                        load_accessor_into_memory_buffer(accessor, &tangents_memory, &tangents_count);
+                    }
                 } break;
                 case cgltf_attribute_type_color: {
-                    if (!colors_accessor && (accessor->type == cgltf_type_vec3)) colors_accessor = accessor;
+                    if (!colors_memory && (accessor->type == cgltf_type_vec3))
+                    {
+                        assert(accessor->component_type == cgltf_component_type_r_32f);
+                        load_accessor_into_memory_buffer(accessor, &colors_memory, &colors_count);
+                    }
                 } break;
                 case cgltf_attribute_type_texcoord: {
-                    if (!textures_accessor && (accessor->type == cgltf_type_vec2)) textures_accessor = accessor;
+                    if (!texture_uvs_memory && (accessor->type == cgltf_type_vec2))
+                    {
+                        assert(accessor->component_type == cgltf_component_type_r_32f);
+                        load_accessor_into_memory_buffer(accessor, &texture_uvs_memory, &texture_uvs_count);
+                    }
                 } break;
                 case cgltf_attribute_type_joints: {
                     if (!bone_influences_memory) load_accessor_into_memory_buffer(accessor, &bone_influences_memory, &bone_influences_count);
+                    else break;
 
-                    assert(cgltf_num_components(accessor->type) <= MAX_MATRICES_PER_VERTEX); // Should not exceed the maximum amount otherwise, we are in trouble.
+                    num_bone_influences_per_vertex = cgltf_num_components(accessor->type);
+
+                    assert(num_bone_influences_per_vertex <= MAX_MATRICES_PER_VERTEX); // Should not exceed the maximum amount otherwise, we are in trouble.
 
                     auto component_type = accessor->component_type;
                     assert((component_type == cgltf_component_type_r_8) || (component_type == cgltf_component_type_r_8u));
                 } break;
                 case cgltf_attribute_type_weights: {
                     if (!vertex_weights_memory) load_accessor_into_memory_buffer(accessor, &vertex_weights_memory, &weights_count);
+                    else break;
 
                     assert(accessor->component_type == cgltf_component_type_r_32f);
                 } break;
@@ -1316,119 +1233,67 @@ bool load_gltf_model_2024(Triangle_Mesh *triangle_mesh) // @Cleanup: Rename
         }
 
         //
-        // The number of vertex blend infos, or [bones influences and weights] must be the same as
-        // the total number of vertices.
+        // Checking the validity of the data...
         //
-        if (bone_influences_memory || vertex_weights_memory) // Although we are doing an OR, both must be present at once.
         {
-            assert((bone_influences_count == vertices_this_list) && (weights_count == vertices_this_list));
+            assert(normals_count == vertices_this_list);
+
+            if (tangents_memory)    assert(tangents_count == normals_count);
+            if (texture_uvs_memory) assert(texture_uvs_count == vertices_this_list);
+            if (colors_memory)      assert(colors_count == vertices_this_list);
+
+            // The number of vertex blend infos, or [bones influences and weights] must be the same as
+            // the total number of vertices.
+            if (bone_influences_memory || vertex_weights_memory) // Although we are doing an OR, both must be present at once.
+            {
+                assert((bone_influences_count == vertices_this_list) && (weights_count == vertices_this_list));
+            }
         }
 
         //
         // Process the positions, uvs, normals, tangents, bitangents, and colors.
         //
+        for (i64 i = 0; i < vertices_this_list; ++i)
         {
-            auto v_offset = vertices_previous_lists;
+            auto v_i = vertices_previous_lists + i;
 
             // Positions.
-            {
-                u8 *dest = reinterpret_cast<u8*>(&triangle_mesh->vertices[v_offset]);
-                auto success = read_floats_from_accessor(dest, positions_accessor);
-                if (!success)
-                {
-                    logprint("gltf_loader", "Warning sub-mesh %d in model '%s' does not have any vertex positions!\n", it_index, c_path);
-                }
-            }
+            assert(positions_memory);
 
-            // Frame3.
-            {
-                u8 *dest = reinterpret_cast<u8*>(&triangle_mesh->vertex_frames[v_offset]);
-                read_frame3_from_accessor(dest, vertices_this_list, normals_accessor, tangents_accessor);
-            }
+            auto p = &positions_memory[i * 3];
+            triangle_mesh->vertices[v_i] = Vector3(p[0], p[1], p[2]);
 
-            if (!tangents_accessor)
+            // Frame3
+            assert(normals_memory);
+
+            auto v_frame = &triangle_mesh->vertex_frames[v_i];
+            auto n = &normals_memory[i * 3];
+            v_frame->normal = Vector3(n[0], n[1], n[2]);
+
+            if (tangents_memory)
             {
-                // @Incomplete: Supposed to calculate the tangents and bitangents based on the normals and vertices...
+                auto t = &tangents_memory[i * 4]; // The fourth component is the scalar of the first 3.
+                v_frame->tangent = Vector3(t[0], t[1], t[2]) * t[3];
             }
 
             // Texture UVs.
-            if (textures_accessor)
+            if (texture_uvs_memory)
             {
-                // 
-                // @Speed: Becase we load flipped textures by default, so here,
-                // we cannot do memcpy. Instead, we must flip the y coordinate
-                // of each individual elements.
-                //
-
-                auto accessor = textures_accessor;
-
-                assert(accessor->buffer_view);
-                assert(!accessor->is_sparse);
-                
-                auto element = cgltf_buffer_view_data(accessor->buffer_view);
-                assert(element);
-                element += accessor->offset;
-
-                auto floats_per_element = cgltf_num_components(accessor->type);
-                assert((accessor->component_type == cgltf_component_type_r_32f) && (accessor->stride == floats_per_element * sizeof(f32)));
-
-                auto input_data = reinterpret_cast<f32*>(const_cast<u8*>(element));
-
-                u8 *dest = reinterpret_cast<u8*>(&triangle_mesh->uvs[v_offset]);
-                auto output_data = reinterpret_cast<f32*>(dest);
-
-                for (i64 i = 0; i < accessor->count; ++i)
-                {
-                    auto value = input_data + (i * floats_per_element);
-                    output_data[0] = value[0];
-                    output_data[1] = 1 - value[1];
-
-                    output_data += floats_per_element;
-                }
+                auto uv = &texture_uvs_memory[i * 2];
+                triangle_mesh->uvs[v_i] = Vector2(uv[0], 1 - uv[1]); // Flipping the y coordinate here because GLTF stores the images in the right order and stbi image flipped them....
             }
 
             // Colors.
             if (use_colors)
             {
-                if (colors_accessor)
+                if (colors_memory)
                 {
-                    assert(colors_accessor->count == vertices_this_list);
-
-                    auto accessor = colors_accessor;                    
-                    assert(accessor->buffer_view);
-                    assert(!accessor->is_sparse);
-
-                    auto element = cgltf_buffer_view_data(accessor->buffer_view);
-                    assert(element != NULL);
-                    element += accessor->offset;
-
-                    auto floats_per_element = cgltf_num_components(accessor->type);
-                    assert((accessor->component_type == cgltf_component_type_r_32f) && (accessor->stride == floats_per_element * sizeof(f32)));
-
-                    auto input_data = reinterpret_cast<f32*>(const_cast<u8*>(element));
-
-                    u8 *dest = reinterpret_cast<u8*>(&triangle_mesh->colors[v_offset]);
-                    auto output_data = reinterpret_cast<f32*>(dest);
-
-                    const auto colors_stride_in_floats = sizeof(Vector4) / sizeof(f32);
-                    for (i64 i = 0; i < accessor->count; ++i)
-                    {
-                        auto value = input_data + (i * floats_per_element);
-                        output_data[0] = value[0];
-                        output_data[1] = value[1];
-                        output_data[2] = value[2];
-                        output_data[3] = 1.0f;
-
-                        output_data += colors_stride_in_floats;
-                    }
+                    auto c = &colors_memory[i * 3]; // 3 components because the last one is automatically 1.0f.
+                    triangle_mesh->colors[v_i] = Vector4(c[0], c[1], c[2], 1.0f);
                 }
                 else
                 {
-                    for (auto i = 0; i < vertices_this_list; ++i)
-                    {
-                        auto c = &triangle_mesh->colors[i];
-                        c->x = c->y = c->z = c->w = 1.0f;
-                    }
+                    triangle_mesh->colors[v_i] = Vector4(1, 1, 1, 1);
                 }
             }
 
@@ -1437,40 +1302,40 @@ bool load_gltf_model_2024(Triangle_Mesh *triangle_mesh) // @Cleanup: Rename
             {
                 assert(triangle_mesh->skeleton_info->vertex_blend_info);
 
-                // @Hardcoded: We are doing 4 bones influence right now...
-                // @Cleanup: Make one big outer loop of this and everything above.
+                auto ids     = &reinterpret_cast<u8*>(bone_influences_memory)[i * num_bone_influences_per_vertex];
+                auto weights = &vertex_weights_memory[i * num_bone_influences_per_vertex];
 
-                for (i32 i = 0; i < vertices_this_list; ++i)
+                auto blend_info   = &triangle_mesh->skeleton_info->vertex_blend_info[v_i];
+                auto num_matrices = 0;
+
+                for (i32 j = 0; j < MAX_MATRICES_PER_VERTEX; ++j)
                 {
-                    auto ids     = &reinterpret_cast<u8*>(bone_influences_memory)[i * MAX_MATRICES_PER_VERTEX];
-                    auto weights = &vertex_weights_memory[i * MAX_MATRICES_PER_VERTEX];
+                    if (!weights[j]) continue; // If weight is 0, then that matrix doesn't influence the vertex.
 
-                    auto blend_info   = &triangle_mesh->skeleton_info->vertex_blend_info[v_offset + i];
-                    auto num_matrices = 0;
+                    auto piece = &blend_info->pieces[num_matrices];
 
-                    for (i32 j = 0; j < 4; ++j)
-                    {
-                        if (!weights[j]) continue; // If weight is 0, then that matrix doesn't influence the vertex.
+                    // @Note: This index is the joint/skeleton node index
+                    // inside the joints array of the skin.
+                    auto matrix_index  = static_cast<i32>(ids[j]);
+                    assert(matrix_index < triangle_mesh->skeleton_info->skeleton_node_info.count);
 
-                        auto piece = &blend_info->pieces[num_matrices];
+                    piece->matrix_index  = matrix_index;
+                    piece->matrix_weight = weights[j];
 
-                        // @Note: This index is the joint/skeleton node index
-                        // inside the joints array of the skin.
-                        auto matrix_index  = static_cast<i32>(ids[j]);
-                        assert(matrix_index < triangle_mesh->skeleton_info->skeleton_node_info.count);
-
-                        piece->matrix_index  = matrix_index;
-                        piece->matrix_weight = weights[j];
-
-                        num_matrices += 1;
-                    }
-                    
-                    blend_info->num_matrices = num_matrices;
+                    num_matrices += 1;
                 }
-            }
 
-            // @Incomplete: Not handling texture color... or should we??
+                assert(num_matrices <= num_bone_influences_per_vertex);
+                blend_info->num_matrices = num_matrices;
+            }
         }
+
+        // if (!tangents_memory)
+        // {
+        //     // @Incomplete: Supposed to calculate the tangents and bitangents based on the normals and vertices...
+        // }
+
+        // @Incomplete: Not handling texture color... or should we??
 
         auto triangle_list_info = &triangle_mesh->triangle_list_info[it_index];
 

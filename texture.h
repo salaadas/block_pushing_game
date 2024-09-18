@@ -36,6 +36,8 @@ struct Texture_Map
     i32              height;
     bool             dirty = false;
 
+    bool             is_srgb = false;
+
     GLuint           id = 0;     // GL texture handle
     GLuint           fbo_id = 0; // GL texture handle
 
@@ -43,6 +45,7 @@ struct Texture_Map
 
     // @Note: For Catalog
     bool             loaded = false;
+
 };
 
 void init_bitmap(Bitmap *bitmap);

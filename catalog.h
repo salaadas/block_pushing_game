@@ -113,12 +113,12 @@ void my_perform_reload_or_creation(Catalog_Base *base, String short_name, String
 
     if (!pointer)
     {
-        printf("[catalog]: Making new asset '%s':'%s' \n", temp_c_string(short_name), temp_c_string(full_name));
+        logprint("catalog", "Making new asset '%s':'%s' \n", temp_c_string(short_name), temp_c_string(full_name));
         base->proc_register_loose_file(base, short_name, full_name);
     }
     else
     {
-        printf("[catalog]: Reloading file for '%s' -> '%s'\n", temp_c_string(base->my_name), temp_c_string(short_name));
+        logprint("catalog", "Reloading file for catalog '%s' -> '%s'\n", temp_c_string(base->my_name), temp_c_string(short_name));
 
         // @Fixme @Leak @Leak @Leak: We are not freeing the old thing in reload_asset!!!!
         // Should we leave the freeing part up to the reload_asset procedure?

@@ -242,7 +242,7 @@ void init_gl(i32 render_target_width, i32 render_target_height, bool vsync = tru
     }
 
     {
-        auto result = create_texture_rendertarget(XXX_the_offscreen_buffer_width, XXX_the_offscreen_buffer_height, true, false);
+        auto result = create_texture_rendertarget(XXX_the_offscreen_buffer_width, XXX_the_offscreen_buffer_height, true, true);
         the_offscreen_buffer = result.first;
         the_depth_buffer = result.second;
         assert((the_depth_buffer != NULL));
@@ -330,8 +330,10 @@ void resize_offscreen_buffer_size(i32 new_width, i32 new_height)
 
     the_offscreen_buffer->width  = (i32)(floorf(w));
     the_offscreen_buffer->height = (i32)(floorf(h));
-    size_color_target(the_offscreen_buffer, false);
+    size_color_target(the_offscreen_buffer, true);
 
+    // @Fixme @Fixme @Fixme: Game view is skewed when resize.
+    // @Fixme @Fixme @Fixme: Game view is skewed when resize.
     // @Fixme @Fixme @Fixme: Game view is skewed when resize.
     the_depth_buffer->width  = (i32)(floorf(w));
     the_depth_buffer->height = (i32)(floorf(h));
