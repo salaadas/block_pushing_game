@@ -14,6 +14,7 @@ The engine features:
 - Immediate-mode GUI library (has buttons, text inputs, color picker, checkboxes, comboboxes, window panels, slidable regions, scrollable regions, ...).
 - Font rendering with FreeType.
 - Tone mapping/gamma correction, HDR.
+- Parser that allows for include directive and some extra tags for GLSL shaders.
 - Catalog assets system that supports hotloading.
 - Serialization and metadata system for undo and save games.
 - Custom allocators and data structures (dynamic arrays, hash tables, pools, bucket arrays, ...).
