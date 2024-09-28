@@ -118,6 +118,10 @@ T *New(bool should_init = true, Allocator allocator = {})
 #include "newstring.h"
 
 #define logprint(agent, ...) __logprint(__FUNCTION__, __LINE__, agent, __VA_ARGS__)
+
+__attribute__ ((format (printf, 4, 5))) // @Hack: To get u8* agent names.
+void __logprint(const char *func, long line, u8 *agent, const char *fmt, ...);
+
 __attribute__ ((format (printf, 4, 5)))
 void __logprint(const char *func, long line, const char *agent, const char *fmt, ...);
 
@@ -174,6 +178,7 @@ f32 normalize_or_zero(Vector3 *dir);
 
 Vector2 unit_vector(Vector2 v);
 Vector3 unit_vector(Vector3 v);
+Vector4 unit_vector(Vector4 v);
 
 void print_cmaj_as_rmaj(Matrix4 mat); // Print column major as row major
 
@@ -187,6 +192,9 @@ f32 sign_float(f32 x);
 
 f32 move_toward(f32 a, f32 b, f32 amount);
 Vector3 move_toward(Vector3 a, Vector3 b, f32 amount);
+
+// my_pair<Vector3 /*y_axis*/, Vector3 /*z_axis*/> make_an_orthonormal_basis(Vector3 x_axis);
+my_pair<Vector3 /*y_axis*/, Vector3 /*z_axis*/> make_an_orthonormal_basis(Vector3 x_axis, Vector3 approximate_axis);
 
 template <typename T>
 void Clamp(T *x, T lower, T higher)

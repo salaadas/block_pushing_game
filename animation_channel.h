@@ -33,8 +33,7 @@ struct Pose_Channel
     };
 
     RArr<Node_Info>   nodes_info;
-    RArr<Xform_State> states; // Xform_States coult be stored within node_info but it is convenient to have these packed.
-    RArr<Matrix4>     transforms_relative_to_parent;
+    RArr<Xform_State> states_relative_to_parent; // Xform_States could be stored within Node_Info but it is convenient to have these packed.
 
     Animation_Player *my_aplayer = NULL;
 
@@ -58,13 +57,23 @@ struct Pose_Channel
     Sampled_Animation *animation = NULL;
     i32 issue_number = 0;
     bool evaluated_at_least_once = false;
+
+    f32 blend_out_t        = -1;
+    f32 blend_out_duration = -1;
+//    Sampled_Animation *transition_into = NULL; // @Hack: This is just to get the animation blending stuff going, we would probably want to determine transitions from the Animation_Graph and Arc.
+
+    f32 blend_factor_for_debug_output = 1.0f; // This is only being used in animation_hud.cpp for showing how much this channel is being blended in the Animation_Player.
 };
 
 // constexpr f64 TOO_SHORT_TO_COUNT_AS_MOTION = 1.0; // Will have to get smaller!
 
+void set_speed(Pose_Channel *channel, f32 time_multiplier);
 void set_animation(Pose_Channel *channel, Sampled_Animation *sanim, f64 start_time);
 bool eval(Pose_Channel *channel);
 void accumulate_time(Pose_Channel *channel, f64 dt);
 
+void set_from_matrix(Xform_State *state, Matrix4 m); // @Speed:
 void get_matrix(Xform_State xform, Matrix4 *m); // @Speed:
 void get_inverse_matrix(Xform_State xform, Matrix4 *result); // @Speed:
+
+Xform_State lerp(Xform_State xform0, Xform_State xform1, f64 t);

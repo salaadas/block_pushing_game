@@ -18,17 +18,29 @@ extern GLFWwindow *glfw_window;
 extern i32 render_target_width;
 extern i32 render_target_height;
 
+extern bool multisampling;
+
 extern Texture_Map *the_depth_buffer;
 extern Texture_Map *the_back_buffer;
 extern Texture_Map *the_offscreen_buffer;
+extern Texture_Map *the_ldr_buffer;
+
 extern i32          XXX_the_offscreen_buffer_width; // :DeprecateMe
 extern i32          XXX_the_offscreen_buffer_height; // :DeprecateMe
+
+extern i32 shadow_map_width;
+extern i32 shadow_map_height;
+extern Texture_Map *shadow_map_buffer;
+extern Texture_Map *shadow_map_depth;
 
 extern Matrix4 view_to_proj_matrix;
 extern Matrix4 world_to_view_matrix;
 extern Matrix4 object_to_world_matrix;
 // The above 3 transformations can be performed in a single linear transformation below
 extern Matrix4 object_to_proj_matrix;
+
+extern Matrix4 object_to_shadow_map_matrix;
+extern Matrix4 world_to_shadow_map_matrix;
 
 struct Vertex_XCNUU
 {
@@ -135,9 +147,11 @@ void DumpProgramInfoLog(GLuint program, String name);
 bool _dump_gl_errors(const char *tag, const char *func, long line, const char *file);
 #define DumpGLErrors(tag) _dump_gl_errors(tag, __FUNCTION__, __LINE__, __FILE__)
 
-Texture_Map *create_texture(Bitmap *data);
+// Texture_Map *create_texture(Bitmap *data);
 void set_texture(String texture_name, Texture_Map *map);
-void update_texture(Texture_Map *map);
+
+// void update_texture(Texture_Map *map);
+void update_texture_from_bitmap(Texture_Map *map, Bitmap *bitmap);
 
 my_pair<Texture_Map*, Texture_Map*> create_texture_rendertarget(i32 width, i32 height, bool do_depth_target = false, bool do_hdr = false);
 void set_render_target(u32 index, Texture_Map *map, Texture_Map *depth_map = NULL);

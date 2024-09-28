@@ -163,9 +163,9 @@ void bitmap_alloc(Bitmap *bitmap, i32 w, i32 h, Texture_Format format)
     auto size = w * h * bpp;
 
     bitmap->data              = (u8*)(my_alloc(sizeof(u8) * size));
-    bitmap->num_mipmap_levels = 1;
-    bitmap->length_in_bytes   = size;
-    bitmap->format            = format;
+    // bitmap->length_in_bytes   = size;
+    bitmap->XXX_num_mipmap_levels = 1;
+    bitmap->XXX_format            = format;
 }
 
 void init_fonts(i32 page_size_x = -1, i32 page_size_y = -1)

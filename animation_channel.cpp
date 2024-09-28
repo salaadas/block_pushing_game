@@ -38,7 +38,7 @@ void set_animation(Pose_Channel *channel, Sampled_Animation *sanim, f64 start_ti
     array_reset(&channel->nodes_info);
     if (!sanim)
     {
-        array_reset(&channel->states);
+        array_reset(&channel->states_relative_to_parent);
     }
     else
     {
@@ -49,7 +49,7 @@ void set_animation(Pose_Channel *channel, Sampled_Animation *sanim, f64 start_ti
             array_add(&channel->nodes_info, info);
         }
 
-        array_resize(&channel->states, sanim->nodes_info.count);
+        array_resize(&channel->states_relative_to_parent, sanim->nodes_info.count);
     }
 
     assert(channel->my_aplayer);
@@ -164,7 +164,7 @@ void get_xform_state(Sampled_Animation *anim, f64 time, RArr<Xform_State> *state
     {
         auto denom = static_cast<f64>(anim->num_samples - 1);
 
-        auto time_per_sample = anim->duration * 1.0         / denom;
+        auto time_per_sample = anim->duration * 1.0f         / denom;
         auto time_base       = anim->duration * sample_index / denom;
 
         fraction = (time - time_base) / time_per_sample;
@@ -197,7 +197,6 @@ void get_xform_state(Sampled_Animation *anim, f64 time, RArr<Xform_State> *state
     }
 }
 
-inline
 void get_matrix(Xform_State xform, Matrix4 *m) // @Speed:
 {
     set_rotation(m, xform.orientation);
@@ -271,6 +270,19 @@ void get_inverse_matrix(Xform_State state, Matrix4 *result) // @Speed:
     *result = r * t;
 }
 
+void set_from_matrix(Xform_State *state, Matrix4 m) // @Speed:
+{
+    Vector3 mx(m[0][0], m[1][0], m[2][0]); // First row.
+    Vector3 my(m[0][1], m[1][1], m[2][1]); // Second row.
+    Vector3 mz(m[0][2], m[1][2], m[2][2]); // Third row.
+
+    state->scale = Vector3(glm::length(mx), glm::length(my), glm::length(mz));
+    state->translation = Vector3(m[3][0], m[3][1], m[3][2]);
+
+    state->orientation = cmuratori_get_orientation(m); // @Cleanup: Why use this instead of the below?
+    // state->orientation = glm::quat_cast(m);
+}
+
 // 'eval' takes whatever the current time of the channel is, and seeks
 // into the animation by that amount. Then, you get the time stamp
 // between the two samples and then interpolate between them.
@@ -286,14 +298,37 @@ bool eval(Pose_Channel *channel)
 
     if (channel->completed && channel->completed_state_propagated_through) return false; // Early out.
 
-    assert(channel->states.count == channel->animation->nodes_info.count);
-    get_xform_state(channel->animation, channel->current_time, &channel->states);
+    assert(channel->states_relative_to_parent.count == channel->animation->nodes_info.count);
+    get_xform_state(channel->animation, channel->current_time, &channel->states_relative_to_parent);
 
     //
-    // Convert to local space so we can blend later.
+    // Convert to local space so we can blend later. However, GLTF format already stores
+    // the transforms in local space relative to the parent of the node, we don't need to do anything?
     //
-    assert(channel->nodes_info.count == channel->states.count);
+    assert(channel->nodes_info.count == channel->states_relative_to_parent.count);
 
+    // @Speed: We need operator * for Xform_State because this is slow.
+    for (i64 i = 0; i < channel->states_relative_to_parent.count; ++i)
+    {
+        auto a_info = &channel->animation->nodes_info[i];
+        if (a_info->parent_index < 0)
+        {
+            Matrix4 m;
+            get_matrix(channel->states_relative_to_parent[i], &m);
+
+            // In case our 'root' isn't the actual root in the modeling software,
+            // we account for that by using the g_matrix.
+            m = channel->animation->g_matrix * m;
+
+            Xform_State root;
+            set_from_matrix(&root, m);
+            channel->states_relative_to_parent[i] = root;
+
+            break;
+        }
+    }
+
+/*
     array_reset(&channel->transforms_relative_to_parent);
 
     // @Note: When we loaded the sampled animation, GLTF already stores the animation
@@ -325,6 +360,7 @@ bool eval(Pose_Channel *channel)
             array_add(&channel->transforms_relative_to_parent, m);
         }
     }
+*/
 
     if (channel->nodes_info.count) channel->evaluated_at_least_once = true;
     if (channel->completed) channel->completed_state_propagated_through = true; // Is this branch dead?

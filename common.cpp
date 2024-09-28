@@ -141,6 +141,20 @@ void __logprint(const char *func, long line, const char *agent, const char *fmt,
     va_end(args);
 }
 
+void __logprint(const char *func, long line, u8 *agent, const char *fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+
+    printf("[%s]: ", agent);
+    //printf("[%s] Function '%s', line %ld: ", agent, func, line);
+
+    // Ignore the security warning....
+    vprintf(fmt, args);
+
+    va_end(args);
+}
+
 void *my_alloc(i64 size, Allocator allocator)
 {
     auto a = allocator;
@@ -208,6 +222,23 @@ void normalize_or_identity(Quaternion *q)
     q->w *= factor;
 }
 
+void normalize_or_z_axis(Vector3 *v)
+{
+    auto sq = sqrtf(v->x*v->x + v->y*v->y + v->z*v->z);
+    if (sq == 0)
+    {
+        v->x = 0;
+        v->y = 0;
+        v->z = 1;
+        return;
+    }
+
+    auto factor = 1.0f / sq;
+    v->x *= factor;
+    v->y *= factor;
+    v->z *= factor;
+}
+
 Quaternion nlerp(Quaternion a, Quaternion b, f32 t)
 {
     auto r = lerp(a, b, t);
@@ -267,6 +298,21 @@ Vector3 unit_vector(Vector3 v)
     return result;
 }
 
+Vector4 unit_vector(Vector4 v)
+{
+    auto sq = sqrtf(v.x*v.x + v.y*v.y + v.z*v.z + v.w*v.w);
+    if (sq == 0) return v;
+
+    Vector4 result;
+    auto factor = 1.0f / sq;
+    result.x = v.x * factor;
+    result.y = v.y * factor;
+    result.z = v.z * factor;
+    result.w = v.w * factor;
+
+    return result;
+}
+
 void print_cmaj_as_rmaj(Matrix4 mat)
 {
     mat = glm::transpose(mat);
@@ -284,11 +330,11 @@ void set_rotation(Matrix4 *rotation_matrix, Quaternion orientation)
 
 void get_ori_from_rot(Quaternion *ori, Vector3 axis_of_rot, f32 theta)
 {
-    f32 sin_of_half_theta = sin(theta / 2.0f);
+    f32 sin_of_half_theta = sinf(theta / 2.0f);
     ori->x = axis_of_rot.x * sin_of_half_theta;
     ori->y = axis_of_rot.y * sin_of_half_theta;
     ori->z = axis_of_rot.z * sin_of_half_theta;
-    ori->w = cos(theta / 2.0f);
+    ori->w = cosf(theta / 2.0f);
 }
 
 void get_rot_mat(Matrix4 *mat, Vector3 axis_of_rot, f32 theta)
@@ -355,4 +401,51 @@ Vector3 move_toward(Vector3 a, Vector3 b, f32 amount)
     result.z = move_toward(a.z, b.z, amount);
 
     return result;
+}
+
+my_pair<Vector3 /*y_axis*/, Vector3 /*z_axis*/> make_an_orthonormal_basis(Vector3 x_axis)
+{
+    auto cross = Vector3(1, 1, 1); // A seed vector.
+
+    if (x_axis.x > x_axis.y)
+    {
+        if (x_axis.y > x_axis.z)
+        {
+            cross.x = 0;
+        }
+        else
+        {
+            cross.z = 0;
+        }
+    }
+    else
+    {
+        if (x_axis.y > x_axis.z)
+        {
+            cross.y = 0;
+        }
+        else
+        {
+            cross.z = 0;
+        }
+    }
+
+    auto y_axis = glm::cross(cross, x_axis);
+    normalize_or_z_axis(&y_axis);
+
+    auto z_axis = glm::cross(x_axis, y_axis);
+    normalize_or_z_axis(&z_axis);
+
+    return {y_axis, z_axis};
+}
+
+my_pair<Vector3 /*y_axis*/, Vector3 /*z_axis*/> make_an_orthonormal_basis(Vector3 x_axis, Vector3 approximate_axis)
+{
+    auto y_axis = glm::cross(approximate_axis, x_axis);
+    normalize_or_z_axis(&y_axis);
+
+    auto z_axis = glm::cross(x_axis, y_axis);
+    normalize_or_z_axis(&z_axis);
+
+    return {y_axis, z_axis};
 }

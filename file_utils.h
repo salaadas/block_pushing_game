@@ -4,7 +4,7 @@
 #include <cctype>
 
 template <typename U, typename V>
-void Swap(U *a, V *b)
+void Swap(U *a, V *b) // @Cleanup: Use this instead of swap_elements
 {
     auto temp = *a;
     *a = *b;
@@ -48,9 +48,10 @@ String find_character_from_right(String string, u8 c);
 String find_character_from_left(String string, u8 c);
 void advance(String *s, i64 amount);
 void eat_spaces(String *sp);
+void eat_trailing_spaces(String *string);
 my_pair<String, String> break_by_spaces(String line);
 
-void start_file(Text_File_Handler *handler, String full_path, String log_agent);
+void start_file(Text_File_Handler *handler, String full_path, String log_agent, bool optional = false);
 void deinit(Text_File_Handler *handler);
 my_pair<String, bool> consume_next_line(Text_File_Handler *handler);
 

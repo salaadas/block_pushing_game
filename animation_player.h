@@ -7,11 +7,6 @@
 struct Triangle_Mesh;
 struct Pose_Channel;
 
-struct Combined_State
-{
-    RArr<Xform_State> xforms; // These xforms must be in the global space.
-};
-
 // Move this into a animation_player.cpp file later.
 struct Animation_Player
 {
@@ -28,12 +23,7 @@ struct Animation_Player
 
     Table<String, i32> node_name_to_index_map;
 
-    // The combine states are for interpolating between frames and, most importantly, to
-    // blend between different animations.
-    Combined_State state0;
-    Combined_State state1;
-    Combined_State *current_state;
-    Combined_State *previous_state;
+    RArr<Xform_State> current_states; // These xforms must be in the global space.
 
     RArr<Matrix4> output_matrices; // These matrices are the skeleton nodes to world transforms.
 
@@ -43,13 +33,15 @@ struct Animation_Player
     bool remove_locomotion      = false; // This is for making an animation become in-place.
     bool needs_hierarchy_update = false;
 
-    RArr<Matrix4> transforms_relative_to_parent; // Our own copy of the transforms stuff so that we can put the blending transformations on here.
+    RArr<Xform_State> states_relative_to_parent; // Our blended states with respect to the parents from the channels.
 };
 
-void init_player(Animation_Player *player);
 void set_mesh(Animation_Player *player, Triangle_Mesh *mesh);
 Pose_Channel *add_animation_channel(Animation_Player *player);
 void accumulate_time(Animation_Player *player, f64 dt);
 void eval(Animation_Player *player, bool allow_discontinuity_blending = true);
+void reset_animations(Animation_Player *player);
+
+Pose_Channel *get_primary_animation_channel(Animation_Player *player);
 
 Quaternion cmuratori_get_orientation(Matrix4 m);

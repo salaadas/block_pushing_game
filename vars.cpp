@@ -159,12 +159,38 @@ void poke_value(Value_Folder *folder, Value_Slot *slot, String rhs, char *c_agen
 #undef poke_int
 }
 
-void reload_variables(String full_name)
+void reload_variables_really(String full_name, bool optional = false); // @ForwardDeclare
+
+void reload_variables(String short_name, String full_name)
+{
+    if (short_name == String("All"))
+    {
+        // Any time we reload All, also reload Local afterward,
+        // since Local layers on top of All.
+
+        reload_variables_really(full_name);
+        reload_variables_really(String("data/Local.variables"), true); // @Hardcode:
+    }
+    else if (short_name == String("Local"))
+    {
+        // Any time we reload Local, reload All first,
+        // so that we correctly set variables back to their defaults.
+
+        reload_variables_really(String("data/All.variables"), false); // @Hardcode:
+        reload_variables_really(full_name);
+    }
+    else
+    {
+        reload_variables_really(full_name);
+    }
+}
+
+void reload_variables_really(String full_name, bool optional)
 {
     Text_File_Handler handler;
     String agent("variables");
 
-    start_file(&handler, full_name, agent);
+    start_file(&handler, full_name, agent, optional);
     if (handler.failed) return;
 
     auto c_agent = reinterpret_cast<char*>(temp_c_string(agent));
@@ -266,5 +292,5 @@ void init_variables()
 {
     add_struct_to_folders(&gameplay_visuals);
 
-    reload_variables(String("data/All.variables"));
+    reload_variables(String("All"), String("data/All.variables"));
 }

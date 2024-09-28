@@ -1,3 +1,6 @@
+// @Hack @Hack @Hack: This is a hack to force the ldr to not use multi-sampled texture.
+// @Hack @Hack @Hack: This is a hack to force the shadow map to not use multi-sampled texture.
+
 #include "common.h"
 
 // OpenGL
@@ -38,16 +41,15 @@
 // #define NON_RESIZABLE_MODE
 
 const String LEVEL_SET_NAME("heroes1");
-// const String OVERRIDE_LEVEL_NAME("heroes1_11");
-const String OVERRIDE_LEVEL_NAME("heroes1_1");
+const String OVERRIDE_LEVEL_NAME("heroes1_11");
+// const String OVERRIDE_LEVEL_NAME("heroes1_8");
 
 const f32    DT_MAX = 0.15f;
 const i32    DESIRED_WIDTH  = 1600;
 const i32    DESIRED_HEIGHT = 900;
 const String PROGRAM_NAME("Heroes of sokoban");
 const String FONT_FOLDER("data/fonts/");
-// @Fixme: Set this font size depending on the window's size
-i32          BIG_FONT_SIZE = 32;
+i32          BIG_FONT_SIZE = 32; // @Note: This font size changes depending on the window's size
 
 Program_Mode program_mode = Program_Mode::GAME;
 
@@ -63,13 +65,15 @@ i32          resized_width  = DESIRED_WIDTH;
 i32          resized_height = DESIRED_HEIGHT;
 // Sound_Player *sound_player;
 
-RArr<Catalog_Base*> all_catalogs;
-Shader_Catalog      shader_catalog;
-Texture_Catalog     texture_catalog;
-Level_Set_Catalog   level_set_catalog;
-// Animation_Catalog       animation_catalog;
-// Animation_Names_Catalog animation_names_catalog;
-// Animation_Graph_Catalog animation_graph_catalog;
+RArr<Catalog_Base*>     all_catalogs;
+Shader_Catalog          shader_catalog;
+Texture_Catalog         texture_catalog;
+Level_Set_Catalog       level_set_catalog;
+Animation_Catalog       animation_catalog;
+Animation_Names_Catalog animation_names_catalog;
+Animation_Graph_Catalog animation_graph_catalog;
+
+Animation_Graph *human_animation_graph = NULL;
 
 Mesh_Catalog    mesh_catalog;
 // Sound_Catalog   sound_catalog;
@@ -244,8 +248,22 @@ void init_gl(i32 render_target_width, i32 render_target_height, bool vsync = tru
     {
         auto result = create_texture_rendertarget(XXX_the_offscreen_buffer_width, XXX_the_offscreen_buffer_height, true, true);
         the_offscreen_buffer = result.first;
-        the_depth_buffer = result.second;
+        the_depth_buffer     = result.second;
         assert((the_depth_buffer != NULL));
+
+        {
+            // @Hack @Hack @Hack: This is a hack to force the ldr to not use multi-sampled texture.
+            // @Hack @Hack @Hack: This is a hack to force the ldr to not use multi-sampled texture.
+            // @Hack @Hack @Hack: This is a hack to force the ldr to not use multi-sampled texture.
+
+            auto old_multisampling = multisampling;
+            multisampling = false;
+
+            auto result = create_texture_rendertarget(XXX_the_offscreen_buffer_width, XXX_the_offscreen_buffer_height, false, false); // This is only used to blit the multi-sampled FBO. It is useful for tone mapping from HDR to LDR.
+
+            the_ldr_buffer = result.first;
+            multisampling  = old_multisampling;
+        }
 
         // @Fixme: So many similar variable names for sizes
         auto back_buffer_width  = render_target_width;
@@ -255,6 +273,26 @@ void init_gl(i32 render_target_width, i32 render_target_height, bool vsync = tru
         init_texture_map(the_back_buffer);
         the_back_buffer->width  = back_buffer_width;
         the_back_buffer->height = back_buffer_height;
+
+        // Creating shadow map color buffer and its depth buffer. We want the color buffer
+        // of the shadow map in order to debug its output.
+        {
+            // @Hack @Hack @Hack: This is a hack to force the shadow map to not use multi-sampled texture.
+            // @Hack @Hack @Hack: This is a hack to force the shadow map to not use multi-sampled texture.
+            // @Hack @Hack @Hack: This is a hack to force the shadow map to not use multi-sampled texture.
+
+            auto old_multisampling = multisampling;
+            multisampling = false;
+
+            shadow_map_width  = 2048;
+            shadow_map_height = 2048; // Make this settable later.
+
+            auto shadow = create_texture_rendertarget(shadow_map_width, shadow_map_height, true);
+            shadow_map_buffer = shadow.first;
+            shadow_map_depth  = shadow.second;
+
+            multisampling  = old_multisampling;
+        }
     }
 
     object_to_world_matrix = Matrix4(1.0);
@@ -270,7 +308,7 @@ void init_gl(i32 render_target_width, i32 render_target_height, bool vsync = tru
     glGenBuffers(1, &immediate_vbo);
     glGenBuffers(1, &immediate_vbo_indices);
 
-    // Clearing the initial color of the game when loading @Temporary
+    // @Temporary: Clearing the initial color of the game when loading
     glClearColor(.03, .10, .13, 1);
     glClear(GL_COLOR_BUFFER_BIT);
     glfwSwapBuffers(glfw_window);
@@ -332,6 +370,22 @@ void resize_offscreen_buffer_size(i32 new_width, i32 new_height)
     the_offscreen_buffer->height = (i32)(floorf(h));
     size_color_target(the_offscreen_buffer, true);
 
+    {
+        // @Hack @Hack @Hack: This is a hack to force the ldr to not use multi-sampled texture.
+        // @Hack @Hack @Hack: This is a hack to force the ldr to not use multi-sampled texture.
+        // @Hack @Hack @Hack: This is a hack to force the ldr to not use multi-sampled texture.
+
+        auto old_multisampling = multisampling;
+        multisampling = false;
+
+        the_ldr_buffer->width  = (i32)(floorf(w));
+        the_ldr_buffer->height = (i32)(floorf(h));
+
+        size_color_target(the_ldr_buffer, false);
+
+        multisampling = old_multisampling;
+    }
+
     // @Fixme @Fixme @Fixme: Game view is skewed when resize.
     // @Fixme @Fixme @Fixme: Game view is skewed when resize.
     // @Fixme @Fixme @Fixme: Game view is skewed when resize.
@@ -375,9 +429,11 @@ void do_one_frame()
         
         deinit_all_font_stuff_on_resize(); // Because it they depends on the height of the render target
 
+        BIG_FONT_SIZE = render_target_height * .08f;
+
         // @Fixme: Setting fader font and fps font here, because the font stuff will get deinit.
         fader_font = get_font_at_size(FONT_FOLDER, String("KarminaBold.otf"), BIG_FONT_SIZE * 1.0);
-        fps_font = get_font_at_size(FONT_FOLDER, String("AnonymousProRegular.ttf"), BIG_FONT_SIZE * .6);
+        fps_font   = get_font_at_size(FONT_FOLDER, String("AnonymousProRegular.ttf"), BIG_FONT_SIZE * .3);
     }
 
     read_input();
@@ -385,12 +441,8 @@ void do_one_frame()
     // Update/simulation
     if (program_mode == Program_Mode::GAME)
     {
-        // @Temporary: Uncomment this when we finish our ui stuff @Fixme.
-        // @Temporary: Uncomment this when we finish our ui stuff @Fixme.
-        // @Temporary: Uncomment this when we finish our ui stuff @Fixme.
-        // @Temporary: Uncomment this when we finish our ui stuff @Fixme.
-        // hide_os_cursor(glfw_window);
-        simulate_sokoban();
+        hide_os_cursor(glfw_window); // @Cleanup: Move this into the draw phase.
+        simulate_sokoban(); // @Fixme: Turn me back on when finish the material system.
 
         // auto manager = get_entity_manager();
         // update_transition(manager);
@@ -400,7 +452,7 @@ void do_one_frame()
         // @Temporary: Currently, we disable the cursor for EDITOR mode.
         // However, we would like to show the cursor when the editor has
         // some ui elements (buttons, toggles, ...)
-        disable_os_cursor(glfw_window);
+        disable_os_cursor(glfw_window); // @Cleanup: Move this into the draw phase below.
     }
 
     update_audio();
@@ -409,10 +461,8 @@ void do_one_frame()
     // update_editor();
 
     // Draw
+    // if (program_mode == Program_Mode::GAME)
     {
-        // --- hide cursor if focus application
-        // .... ^
-
         // @Cleanup:
         auto manager = get_entity_manager();
 
@@ -426,27 +476,108 @@ void do_one_frame()
 
         // resolve_to_ldr(manager);
 
-        // glEnable(GL_BLEND); // Should we even?
+        // glEnable(GL_BLEND); // For alpha blending.
         draw_hud(manager);
 
         // draw_transition();
+        // draw_debug_view(); // This is in draw.cpp
 
-        // draw_debug_view();
-
-        post_frame_cleanup(manager);
+        post_frame_cleanup(manager); // @Cleanup: This should be inside simulate(), after we fix the entity destruction thing we will move it there.
     }
+/*
+    else if (program_mode == Program_Mode::MENU)
+    {
+        draw_menu();
+    }
+    else
+    {
+        auto manager = open_entity_manager();
+        auto world = get_open_world();
+
+        auto camera = &manager->camera;
+        auto camera->postion     = world->camera_position;
+        auto camera->orientation = world->camera_orientation;
+
+        draw_editor_view();
+        draw_debug_view();
+    }
+*/
+
+    // draw_console(); // Only if developer;
 
     // editor_frame_end();
 
     glfwSwapBuffers(glfw_window);
 
     while (hotloader_process_change()) {}
-    // @Note: currently we do perform_reloads inside hotloader_process_change,
+    // @Incomplete: currently we do perform_reloads inside hotloader_process_change,
     // so there is no need to do it outside here.
     // for (auto it : all_catalogs) perform_reloads(it);
 
     // @Speed:
     if (was_window_resized_this_frame) was_window_resized_this_frame = false;
+}
+
+#include <sys/socket.h>    // For socket().
+#include <sys/ioctl.h>     // For ioctl().
+#include <net/if.h>        // For ifconf.
+#include <netinet/in.h>    // For IPPROTO_IP.
+
+my_pair<RArr<String>, bool /*success*/> os_get_mac_addresses()
+{
+    constexpr auto BUFFER_SIZE = 2000;
+    auto buffer = reinterpret_cast<char*>(my_alloc(BUFFER_SIZE));
+    defer { my_free(buffer); };
+
+    RArr<String> addresses;
+
+    auto sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
+    if (sock == -1) return {addresses, false};
+
+    ifconf ifc = {};
+    ifc.ifc_len = BUFFER_SIZE;
+    ifc.ifc_buf = buffer;
+
+    auto status = ioctl(sock, SIOCGIFCONF, &ifc);
+    if (status == -1) return {addresses, false};
+
+    auto nitems = ifc.ifc_len / sizeof(struct ifreq);
+    for (i64 i = 0; i < nitems; ++i)
+    {
+        auto it = ifc.ifc_req + i;
+
+        ifreq req = {};
+        memcpy(req.ifr_name, it->ifr_name, IFNAMSIZ);
+
+        status = ioctl(sock, SIOCGIFFLAGS, &req);
+        if (status != 0)                  continue; // Should we bail?
+        if (req.ifr_flags & IFF_LOOPBACK) continue; // Ignore loopback.
+
+        status = ioctl(sock, SIOCGIFHWADDR, &req);
+        if (status != 0) continue;
+
+        auto s = req.ifr_hwaddr.sa_data;
+        auto address = sprint(String("%02x-%02x-%02x-%02x-%02x-%02x"),
+                              (u8)s[0], (u8)s[1], (u8)s[2], (u8)s[3], (u8)s[4], (u8)s[5]);
+
+        array_add(&addresses, address);
+        // printf("Address is '%s'\n", temp_c_string(address));
+    }
+
+    return {addresses, true};
+}
+
+my_pair<String, bool /*success*/> os_get_username()
+{
+    constexpr auto BUFFER_SIZE = 256 + 1;
+
+    char buf[BUFFER_SIZE];
+
+    auto not_ok = getlogin_r(buf, BUFFER_SIZE);
+    if (not_ok) return {String(""), false};
+
+    auto name = copy_string(String(buf));
+    return {name, true};
 }
 
 void my_hotloader_callback(Asset_Change *change, bool handled); // @ForwardDeclare
@@ -455,18 +586,40 @@ int main()
 {
     init_context();
 
+    // MAC address and username.
+    // @Incomplete: Hook this up to the editor when we change the entity format.
+    {
+        auto [mac_addresses, mac_success] = os_get_mac_addresses();
+        if (!mac_success)
+        {
+            logprint("main.cpp", "Failed to get MAC address for device (required for editor to work)!\n");
+        }
+
+        auto [username, username_success] = os_get_username();    
+        if (!username_success)
+        {
+            logprint("main.cpp", "Failed to get the username for device (required for editor to work)!\n");
+        }
+    }
+
     // @Note: Init all the catalogs
     init_shader_catalog(&shader_catalog);
     init_texture_catalog(&texture_catalog);
     init_level_set_catalog(&level_set_catalog);
 
     init_mesh_catalog(&mesh_catalog);
+    init_animation_catalog(&animation_catalog);
+    init_animation_names_catalog(&animation_names_catalog);
+    init_animation_graph_catalog(&animation_graph_catalog);
 
     // @Note: Then, add catalogs into the catalog table
     array_add(&all_catalogs, &shader_catalog.base);
     array_add(&all_catalogs, &texture_catalog.base);
     array_add(&all_catalogs, &level_set_catalog.base);
     array_add(&all_catalogs, &mesh_catalog.base);
+    array_add(&all_catalogs, &animation_catalog.base);
+    array_add(&all_catalogs, &animation_names_catalog.base);
+    array_add(&all_catalogs, &animation_graph_catalog.base);
 
     init_window_and_gl(DESIRED_WIDTH, DESIRED_HEIGHT);
 
@@ -486,7 +639,9 @@ int main()
     hotloader_init(); 
     hotloader_register_callback(my_hotloader_callback);
 
-    init_sokoban();
+    human_animation_graph = make_human_animation_graph();
+
+    init_sokoban(); // @Cleanup: Collapse this with the above stuff into init_game.
 
     while (!glfwWindowShouldClose(glfw_window))
     {
@@ -531,6 +686,7 @@ void my_hotloader_callback(Asset_Change *change, bool handled)
     if (handled) return;
 
     auto full_name = change->full_name;
+    auto [short_name, ext] = chop_and_lowercase_extension(change->short_name);
 
     if (change->extension == String("ascii_level"))
     {
@@ -539,7 +695,6 @@ void my_hotloader_callback(Asset_Change *change, bool handled)
         assert((set != NULL));
         assert((set->level_names.count));
 
-        auto [short_name, ext] = chop_and_lowercase_extension(change->short_name);
         auto found = array_find(&set->level_names, short_name);
 
         if (!found) return;
@@ -559,7 +714,7 @@ void my_hotloader_callback(Asset_Change *change, bool handled)
     }
     else if (change->extension == String("variables"))
     {
-        reload_variables(full_name);
+        reload_variables(short_name, full_name);
     }
     else
     {

@@ -193,6 +193,40 @@ String copy_string(String string, Allocator allocator, bool null_terminate)
     return result;
 }
 
+#include <cstdarg>
+String join(i64 nstrings, ...) // Temporary storage
+{
+    // First pass to calculate the total length.
+    va_list args;
+    va_start(args, nstrings);
+    i64 len = 0;
+    for (i64 it_index = 0; it_index < nstrings; ++it_index)
+    {
+        auto s = va_arg(args, String);
+        len += s.count;
+    }
+    va_end(args);
+
+    // Second pass to memcpy to the result.
+    String result = talloc_string(len);
+    i64 cursor = 0;
+
+    va_list args2;
+    va_start(args2, nstrings);
+    for (i64 it_index = 0; it_index < nstrings; ++it_index)
+    {
+        auto s = va_arg(args2, String);
+        u8 *dest = result.data + cursor;
+        u8 *src  = s.data;
+        memcpy(dest, src, s.count);
+
+        cursor += s.count;
+    }
+    va_end(args2);
+
+    return result;
+}
+
 String join(RArr<String> inputs,
             Allocator allocator, bool null_terminate)
 {

@@ -20,7 +20,7 @@ void init_default_camera(Camera *camera)
     camera->position = DEFAULT_CAMERA_POSITION;
 
     // Will be set by the user
-    camera->forward = Vector3(0, 0, 0);
+    camera->forward_vector = Vector3(0, 0, 0);
 
     camera->phi   = -M_PI / 5.0f;
     camera->theta =  M_PI / 2.0f;
@@ -87,8 +87,8 @@ void init_general_entity(Entity *e)
     e->theta_current   = 0.0f;
     e->theta_target    = 0.0f;
 
-    e->boundary_radius = 0.5f; // Default for a cube block
-    e->boundary_center = Vector3(0.5, 0.5, 0.5);
+    e->bounding_radius = 0.5f; // Default for a cube block
+    e->bounding_center = Vector3(0.5, 0.5, 0.5);
     e->manager         = NULL;
     e->locator         = {};
     // e->entity_id       = 0;
@@ -116,14 +116,19 @@ void init_guy(Guy *guy)
     guy->facing_direction = Direction::WEST;
 
     guy->turn_order_index = -1;
+
+    // {
+    //     // @Fixme: @Hack: Because #if defined doesn't initialized the Animation State somehow?
+    //     Human_Animation_State dummy;
+    //     guy->animation_state = dummy;
+    // }
 }
 
 inline
 void register_entity(Entity_Manager *manager, Entity *e)
 {
     e->entity_id = manager->next_entity_id;
-
-    e->manager = manager;
+    e->manager   = manager;
 
     manager->next_entity_id += 1;
 
@@ -160,7 +165,7 @@ void register_entity(Entity_Manager *manager, Entity *e)
 template <class Entity_Type>
 Entity_Type *Make(Entity_Manager *manager, i32 x, i32 y, String texture_2d_name)
 {
-    auto result = New<Entity_Type>(false);
+    auto result = New<Entity_Type>();
 
     auto ret = find_and_occupy_empty_slot(&manager->entity_array);
     init_general_entity(ret.first);
@@ -184,9 +189,9 @@ Entity_Type *Make(Entity_Manager *manager, i32 x, i32 y, String texture_2d_name)
     return result;
 }
 
-// @Cutnpaste from Make() @Cleanup
+// Eventually, this will replace the other Make() function
 template <class Entity_Type>
-Entity_Type *Make3D(Entity_Manager *manager, i32 x, i32 y, String mesh_name)
+Entity_Type *Make_2024(Entity_Manager *manager, Vector3 pos)
 {
     auto result = New<Entity_Type>(false);
 
@@ -199,16 +204,11 @@ Entity_Type *Make3D(Entity_Manager *manager, i32 x, i32 y, String mesh_name)
     result->base->derived_pointer = result;
     _set_type_Type(result->base->type, Entity_Type);
 
-    result->base->position.x = static_cast<f32>(x);
-    result->base->position.y = static_cast<f32>(y);
-    result->base->position.z = 0;
-
+    result->base->position        = pos;
     result->base->visual_position = result->base->position;
 
     result->base->map = NULL;
-    result->base->mesh = catalog_find(&mesh_catalog, mesh_name);
-    assert(result->base->mesh);
-
+    
     register_entity(manager, result->base);
 
     return result;
@@ -234,9 +234,9 @@ Switch *make_switch(Entity_Manager *manager, i32 x, i32 y, String texture_name, 
 
     Vector4 color;
     // @Hardcoded color for the swit:
-    if (flavor == 1) color = Vector4(1, 1, 0, 1);
+    if (flavor == 1)      color = Vector4(1, 1, 0, 1);
     else if (flavor == 2) color = Vector4(1, 0, 1, 1);
-    else color = Vector4(1, 0, 0, 1);
+    else                  color = Vector4(1, 0, 0, 1);
 
     swit->base->override_color = color;
 
@@ -509,15 +509,14 @@ void load_ascii_level(Entity_Manager *manager, String full_path)
                 // making of the guys.
                 else if (c == 'F' || c == '1')
                 {
-                    // @Cleanup: Create a Make_guy3D procedure.
-                    auto guy = Make3D<Guy>(manager, x, y, String("only-red")); // @Hardcoded: @Temporary:
+                    // @Cleanup: Create a make_guy procedure.
+                    auto guy = Make_2024<Guy>(manager, Vector3(x, y, 0));
                     init_guy(guy);
-                    guy->can_push = true;
 
-                    // @Incomplete: Handle animation playing for the guys...
-                    guy->base->animation_player = New<Animation_Player>(); // @Leak:
-                    init_player(guy->base->animation_player);
-                    // set_mesh(guy->base->mesh);
+                    // set_mesh(guy->base, String("only-red"));
+                    set_mesh(guy->base, String("another_vampire")); // @Incomplete: Use the correct red guy later when we have the animations for it.
+
+                    guy->can_push = true;
 
                     bool active = false;
                     if (c == 'F') active = true;
@@ -636,6 +635,7 @@ void load_ascii_level(Entity_Manager *manager, String full_path)
     }
 
     // @Hardcoded @Temporary: Fix the camera control so that each level contains a different camera position and such.
+    // @Cleanup: Is this whole thing redundant now that we have set_matrix_for_entities?
     {
         auto camera = &manager->camera;
 
@@ -655,12 +655,12 @@ void load_ascii_level(Entity_Manager *manager, String full_path)
         point_of_interest.y = (num_y - 1) * 0.5;
         point_of_interest.z = 0;
 
-        camera->fov_vertical = 40; // @Hardcoded:
-        camera->forward = point_of_interest - camera->position;
+        camera->fov_vertical = 25; // @Hardcoded:
+        camera->forward_vector = point_of_interest - camera->position;
 
         // @Cleanup: Is there a faster way to do this?
-        auto dot = glm::dot(camera->forward, Vector3(0, 1, 0));
-        auto len = glm::length(camera->forward);
+        auto dot = glm::dot(camera->forward_vector, Vector3(0, 1, 0));
+        auto len = glm::length(camera->forward_vector);
         camera->phi = -acos(dot / len);
 
         refresh_camera_matrices(camera);
@@ -781,24 +781,23 @@ my_pair<bool, Entity*> remove_from_grid(Proximity_Grid *grid, Entity *e)
 
 void post_frame_cleanup(Entity_Manager *manager)
 {
-    // for (auto e : manager->entities_to_clean_up)
-    // {
-    //     my_free(e->derived_pointer); // This is not calling the entity's destructor, so its leaking
-    //     release_entity(e);
-    // }
-    // array_reset(&manager->entities_to_clean_up);
-
-    auto grid = manager->proximity_grid;
     for (auto e : manager->entities_to_clean_up)
     {
-        auto [success, removed_entity] = remove_from_grid(grid, e);
-        if (!success)
-        {
-            printf("[post_frame_cleanup]: Was not able to clean up entity with id %d\n", e->entity_id);
-        }
+        my_free(e->derived_pointer);
+        release_entity(e);
     }
-
     array_reset(&manager->entities_to_clean_up);
+
+    // auto grid = manager->proximity_grid;
+    // for (auto e : manager->entities_to_clean_up)
+    // {
+    //     auto [success, removed_entity] = remove_from_grid(grid, e);
+    //     if (!success)
+    //     {
+    //         printf("[post_frame_cleanup]: Was not able to clean up entity with id %d\n", e->entity_id);
+    //     }
+    // }
+    // array_reset(&manager->entities_to_clean_up);
 }
 
 void reset_entity_manager(Entity_Manager *manager)
@@ -806,9 +805,17 @@ void reset_entity_manager(Entity_Manager *manager)
     auto proximity_grid = manager->proximity_grid;
     table_reset(&proximity_grid->entities_snapped_to_grid);
 
-    bucket_array_reset(&manager->entity_array);
+    // @Hack:
+    if (manager->all_entities.count)
+    {
+        post_frame_cleanup(manager);
+    }
+    else
+    {
+        array_reset(&manager->entities_to_clean_up);
+    }
 
-    array_reset(&manager->entities_to_clean_up);
+    bucket_array_reset(&manager->entity_array);
 
     array_reset(&manager->all_entities);
     array_reset(&manager->moving_entities);
@@ -832,4 +839,89 @@ void reset_entity_manager(Entity_Manager *manager)
     manager->next_transaction_id_to_retire = 1;
     manager->waiting_on_player_transaction = 0;
     manager->player_transaction_caused_changes = false;
+}
+
+void set_mesh(Entity *e, Triangle_Mesh *mesh)
+{
+    assert(mesh);
+    e->mesh = mesh;
+
+    auto p0 = &mesh->approximate_bounding_box_p0;
+    auto p1 = &mesh->approximate_bounding_box_p1;
+
+    e->bounding_radius = glm::distance(*p0, *p1) * .5f;
+    e->bounding_center = (*p0 + *p1) * .5f;
+
+    // We may want to add materials stuff to the mesh themselves...
+
+    if (cmp_var_type_to_type(e->type, Guy))
+    {
+        add_animation_to_guy(Down<Guy>(e));
+    }
+    else if (cmp_var_type_to_type(e->type, Switch) || cmp_var_type_to_type(e->type, Gate))
+    {
+        add_animation_player(e);
+        // play_animation(e, "open", looping=false, frozen=true);
+    }
+/*
+    else if (cmp_var_type_to_type(e->type, Animating)) // I think this is the scenery and stuff..
+    {
+        add_animation_player(e);
+        if (mesh->name) play_animation(e, mesh->name, looping=true, frozen=false);
+    }
+*/
+}
+
+void set_mesh(Entity *e, String name)
+{
+    e->mesh_name = copy_string(name); // @Incomplete: This should be redundant once we do the new entity text format. We are @Leaking here, but we will revisit this once we do the new format.
+
+    // printf("Mesh name is '%s'\n", temp_c_string(name));
+
+    auto mesh = catalog_find(&mesh_catalog, name);
+
+    // if (!mesh) mesh = the_missing_mesh; // @Incomplete: We don't have a thing that represents this right now.
+    if (!mesh) assert(0); // @Incomplete: See above comment
+
+    set_mesh(e, mesh);
+}
+
+void add_animation_to_guy(Guy *guy)
+{
+    auto mesh_name = guy->base->mesh_name;
+    assert(mesh_name.count);
+
+    //
+    // Animation stuff:
+    //
+    auto names = catalog_find(&animation_names_catalog, mesh_name);
+    if (!names)
+    {
+        logprint("add_animation_to_guy", "Unable to load animations for Guy '%s'!\n", temp_c_string(mesh_name));
+        return; // Guy will not have animation player if there is no mapping for him.....
+    }
+
+    auto s = &guy->animation_state;
+    s->animation_names = names;
+    s->entity = guy->base;
+    add_animation_player(guy->base);
+}
+
+void add_animation_player(Entity *e)
+{
+    if (e->animation_player) // Maybe we are caling this because we changed the mesh.
+    {
+        reset_animations(e->animation_player);
+        set_mesh(e->animation_player, e->mesh);
+        return;
+    }
+
+    auto player = New<Animation_Player>();
+    player->remove_locomotion = true; // Animate all entities in-place.
+
+    e->animation_player = player;
+
+    // Should we make a default animation_channel for each of the thing?
+    // auto channel = add_animation_channel(player);
+    set_mesh(player, e->mesh);
 }

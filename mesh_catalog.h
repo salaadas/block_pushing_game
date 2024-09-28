@@ -6,11 +6,9 @@
 
 struct Triangle_List_Info
 {
-    i32 material_index; // Which material to use to render these triangles?
-    i32 num_indices;    // How many vertices are there in the list? (must be a multiple of 3)
-    i32 first_index;    // What is the index of the beginning of this list? (like an offset)
-
-    Texture_Map *map; // :DeprecateMe, use the map_2024 in Render_Material.
+    i32 material_index = 0; // Which material to use to render these triangles?
+    i32 num_indices = 0;    // How many vertices are there in the list? (must be a multiple of 3)
+    i32 first_index = 0;    // What is the index of the beginning of this list? (like an offset)
 };
 
 // struct Parameterization_Settings
@@ -73,7 +71,7 @@ struct Frame3
     Vector3 normal;
 };
 
-struct Bounding_Box // Not used.
+struct Bounding_Box // Not used. @Incomplete:
 {
     Vector3 min;
     Vector3 max;
@@ -81,12 +79,14 @@ struct Bounding_Box // Not used.
 
 struct Render_Material
 {
-    String  texture_map_name; // This name will only be used when loading the model for the first time to attain the texture map, which will be stored in 'map' of Triangle List Info. :DeprecateMe will not be needed anymore.
+    // String  texture_map_name; // This name will only be used when loading the model for the first time to attain the texture map, which will be stored in 'map' of Triangle List Info. :DeprecateMe will not be needed anymore.
+
     Vector4 color; // @Cleanup: Rename to base_color or albedo color!
     u32     flags; // Using Material_Flags @Incomplete:
 
     Texture_Map *albedo_2024 = NULL;
-    // Texture_Map *normal_2024 = NULL;
+    Texture_Map *normal_map = NULL; // @Incomplete:
+    f32 normal_map_intensity = 0; // @Incomplete:
 };
 
 struct Vertex_Blend_Info_Piece
@@ -176,9 +176,6 @@ struct Triangle_Mesh
     //   For more context, watch this https://youtu.be/aeDMABSW_KE?si=FS_budaHIUO-p6UX
     //   at time stamp 1:54:37.
     // SArr<i32>     vertex_to_vertex_blend_info_map;
-
-    // @Temporary: Move this to animation_player?
-    RArr<Matrix4> skinning_matrices;
 
     // LOD data:
     // Triangle_Mesh        *highest_detail_lod; // NULL if LOD not being used

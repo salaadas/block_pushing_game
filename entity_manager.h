@@ -8,7 +8,6 @@
 #include "texture.h"
 #include "table.h"
 #include "movement_visual.h"
-
 #include "visit_struct.h"
 
 typedef u32 Pid;
@@ -47,38 +46,43 @@ struct Animation_Player;
 
 struct Entity
 {
-    // String     entity_name;
+    // @Incomplete: This is just a convenient way to specify mesh->name.
+    // It will be useful when we do the new .entity_text format, which
+    // we can specify which mesh name to be used inside the file, rather
+    // than specifying the full path to the triangle mesh.
+    // So, for now, it does very little.
+    String     mesh_name;
 
     Vector3    position;
 
-    f32        scale; // 1.0
+    f32        scale = 1.0f;
     Quaternion orientation;
 
     // These are in degrees
     f32        theta_current;
     f32        theta_target;
 
-    f32        boundary_radius;
-    Vector3    boundary_center;
+    f32        bounding_radius; // @Incomplete: Use me
+    Vector3    bounding_center; // @Incomplete: Use me
 
     Triangle_Mesh *mesh;
     // f32 mesh_scale;
     // Vector3 mesh_offset;
 
-    Entity_Manager *manager; // @NoSerialize
+    Entity_Manager *manager = NULL; // @NoSerialize
     Bucket_Locator  locator; // @NoSerialize
 
     Pid             entity_id;
     _type_Type      type = _make_Type(Entity);
-    void           *derived_pointer;
+    void            *derived_pointer;
 
-    Texture_Map    *map; // @NoSerialize        // @Fixme: I think this should go away in the future because we will make everyone a mesh.
+    Texture_Map     *map = NULL; // @NoSerialize        // @Fixme: I think this should go away in the future because we will make everyone a mesh.
     // Texture_Map    *lightmap_texture; // @NoSerialize
 
-    bool use_override_color; // false
+    bool    use_override_color = false;
     Vector4 override_color;
 
-    bool dead; // false
+    bool dead = false;
 
     bool scheduled_for_destruction; // @NoSerialize
 
@@ -94,14 +98,13 @@ struct Entity
 };
 
 VISITABLE_STRUCT(Entity,
-                 // @Note: Not using entity name right now.
-                 // entity_name,
+                 mesh_name,
                  position, scale, orientation,
                  // entity_flags,
                  // group_id,
                  // mount_parent_id,
                  theta_current, theta_target,
-                 boundary_radius, boundary_center,
+                 bounding_radius, bounding_center,
                  use_override_color, override_color,
                  dead,
                  visual_interpolation, visual_position);
@@ -113,6 +116,34 @@ enum class Direction : u32
     NORTH = 1,
     WEST  = 2,
     SOUTH = 3
+};
+
+struct Animation_Names;
+struct Guy;
+struct Human_Animation_State
+{
+    enum Gameplay_State
+    {
+        UNINITIALIZED = 0,
+        INACTIVE = 1,
+        ACTIVE   = 2,
+        WALKING  = 3,
+        PUSHING  = 4,
+        PULLING  = 5,
+        DEAD     = 6
+    };
+
+    // f32 time_to_next_fidget = -1.0f;
+    // Guy *guy = NULL;
+
+    Gameplay_State current_state = UNINITIALIZED;
+    i32 node_index = 0; // This is which node index we are inside the Animation_Graph.
+
+    i32 last_graph_edit_index = 0; // @Cleanup: This is the edit_index of the Animation_Graph the last time we hotload. We use this to know if the graph changed.
+    String node_name;  // @Cleanup: Saved node name for, edit recovery. Only used if is in ANIM_DEVELOPER. Not ifdef out because things are kinda weird if I do....
+
+    Entity *entity = NULL; // Need this for play_animation().
+    Animation_Names *animation_names = NULL;
 };
 
 struct Guy
@@ -133,6 +164,8 @@ struct Guy
     // String move_sound; // = "";
 
     i32 turn_order_index; // -1
+
+    Human_Animation_State animation_state;
 };
 
 VISITABLE_STRUCT(Guy,
@@ -249,7 +282,7 @@ struct Entity_Manager
     Camera              camera;
 
     Pid                 next_entity_id; // 0
-    i32                 active_hero_index; // 0
+    i32                 active_hero_index; // 0 // @Fixme: Active hero index should be the index of the player inside the _by_guys array. We should make another index which is the turn order index which contains which turn order is currently being processed. This is so that when we have the dragons and stuff in place they should be considered as a turn too.
 
     // bool for_editing = false;
     
@@ -299,3 +332,8 @@ my_pair<bool, Entity*> remove_from_grid(Proximity_Grid *grid, Entity *e);
 // that lives inside the triangle list info instead of relying on this.
 template <class Entity_Type>
 Entity_Type *Make(Entity_Manager *manager, i32 x, i32 y, String texture_2d_name);
+
+void add_animation_player(Entity *e);
+void set_mesh(Entity *e, Triangle_Mesh *mesh);
+void set_mesh(Entity *e, String mesh_name);
+void add_animation_to_guy(Guy *guy);

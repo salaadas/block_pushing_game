@@ -23,8 +23,11 @@ struct Keyframe
     SArr<Xform_State> xform_states; // Has a count == 'nodes_info'.
 };
 
-struct Sampled_Animation // @Incomplete: Make this into a catalog.
+struct Sampled_Animation
 {
+    String name;      // For catalog.
+    String full_path; // For catalog.
+
     SArr<Node_Info> nodes_info;
     SArr<Keyframe>  keyframes;
 
@@ -32,6 +35,8 @@ struct Sampled_Animation // @Incomplete: Make this into a catalog.
     i32     frame_rate  = 0; // Frames per second.
     f64     duration    = 0; // Duration in second.
     Matrix4 g_matrix;        // Global matrix.
+
+    bool loaded = false; // For catalog
 };
 
-bool load_sampled_animation(Sampled_Animation *anim, String full_path);
+bool load_sampled_animation(Sampled_Animation *anim, String full_path); // @Cleanup: We don't even need the full_path now that there is a full_path inside Sampled_Animation?

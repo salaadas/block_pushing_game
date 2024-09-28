@@ -33,8 +33,8 @@ struct Visual_Interpolation
     Vector3 visual_end;
 
     f32 start_time = -1.0;
-    f32 duration = 0;
-    f32 elapsed = 0;
+    f32 duration   = 0;
+    f32 elapsed    = 0;
 
     Transaction_Id transaction_id = 0;
 
@@ -44,12 +44,12 @@ struct Visual_Interpolation
     Pid sync_id = 0;
 
     Vector3 velocity;
-    // Vector3 old_velocity;
+    Vector3 old_velocity;
 
     // f32 speed_scale; // 1.0
 
-    // f32 teleport_pre_time;
-    // f32 teleport_post_time;
+    f32 teleport_pre_time;
+    f32 teleport_post_time;
     bool has_teleported = false;
 
     // Pid moving_onto_id;
@@ -77,6 +77,6 @@ struct Entity_Manager;
 #include "source_location.h"
 
 void reset(Visual_Interpolation *v, Source_Location loc = Source_Location::current());
-void add_visual_interpolation(Entity *e, Vector3 old_position, Vector3 new_position, bool is_teleport, f32 duration,
+void add_visual_interpolation(Entity *e, Vector3 old_position, Vector3 new_position, Move_Type move_type, f32 duration,
                               Transaction_Id transaction_id, Source_Location loc = Source_Location::current());
 void update_entities_visual_interpolation(Entity_Manager *manager, f32 dt);

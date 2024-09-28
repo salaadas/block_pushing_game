@@ -61,6 +61,28 @@ void array_init(RArr<V> *array)
 }
 
 template <typename V>
+V *array_add(RArr<V> *array)
+{
+    if (array == NULL) return NULL;
+
+    if (array->count >= array->allocated)
+    {
+        i64 reserve = array->allocated * 2;
+        if (reserve < 8) reserve = 8;
+
+        array_reserve(array, reserve);
+    }
+
+    auto value = &array->data[array->count];
+    array->count += 1;
+
+    V dummy; // @Speed: Doing this to properly initialized the newly added value.
+    *value = dummy;
+
+    return value;
+}
+
+template <typename V>
 void array_add(RArr<V> *array, V value)
 {
     if (array == NULL) return;
@@ -157,8 +179,7 @@ void array_free(RArr<V> *array)
 {
     if (!array->data || (array->count <= 0)) return;
 
-    array->allocator.proc(Allocator_Mode::FREE, 0, 0,
-                          array->data, array->allocator.data);
+    array->allocator.proc(Allocator_Mode::FREE, 0, 0, array->data, array->allocator.data);
     array->data      = NULL;
     array->count     = 0;
     array->allocated = 0;
@@ -390,8 +411,7 @@ void array_free(SArr<V> *array)
 {
     if (!array->data || (array->count <= 0)) return;
 
-    array->allocator.proc(Allocator_Mode::FREE, 0, 0,
-                          array->data, array->allocator.data);
+    array->allocator.proc(Allocator_Mode::FREE, 0, 0, array->data, array->allocator.data);
     array->data      = NULL;
     array->count     = 0;
 }

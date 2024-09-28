@@ -31,10 +31,11 @@ struct Shader
     GLint   blend_matrices_loc;
 
     // Texture samplers
-    GLint  diffuse_texture_loc;
-    GLint lightmap_texture_loc;
-    GLint    blend_texture_loc;
-    GLint       sampler_cursor;
+    GLint      diffuse_texture_loc; // For albedo.
+    GLint     lightmap_texture_loc;
+    GLint        blend_texture_loc;
+    GLint   normal_map_texture_loc; // For normal mapping.
+    GLint           sampler_cursor;
 
     // These are related to textures
     bool diffuse_texture_wraps; // True by default
@@ -47,6 +48,10 @@ struct Shader
 
     // @Note: For Catalog
     bool                loaded = false;
+
+    // For hotreload dependency:
+    bool is_header = false; // Headers don't really compile into a shader program.
+    RArr<Shader*> shaders_that_include_me;
 };
 
 using Shader_Catalog = Catalog<Shader>;

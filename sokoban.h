@@ -27,6 +27,16 @@ bool maybe_retire_next_transaction(Entity_Manager *manager);
 
 void enact_next_buffered_move(Entity_Manager *manager, bool first_call = true);
 
+void change_active_state(Guy *guy, bool active, bool force = false);
+
+struct Pose_Channel;
+struct Sampled_Animation;
+Pose_Channel *play_animation(Entity *e, Sampled_Animation *anim, f32 t0 = 0.0f, f32 blend_out_duration = .2f, Sampled_Animation *next = NULL);
+
+void play_animation(Entity *e, String name, bool looping = true, bool frozen = false, f32 t0 = 0.0f, bool blend = true);
+
+void animate(Guy *guy, Human_Animation_State::Gameplay_State state);
+
 #include "visit_struct.h"
 struct Gameplay_Visuals // Strings inside here must not be literals so they must be heap allocated.
 {
@@ -43,8 +53,14 @@ struct Gameplay_Visuals // Strings inside here must not be literals so they must
 
     f32 distance_epsilon = 0.1f;
 
-    f32 wizard_teleport_pre_time = 0.05f;
-    f32 wizard_teleport_post_time = 0.33f;
+    f32 wizard_teleport_pre_time  = 0.05f;
+    f32 wizard_teleport_post_time = 0.13f;
+
+    f32 endpoint_teleport_pre_time  = 0.05f;
+    f32 endpoint_teleport_post_time = 0.13f;
+
+    // f32 min_fidget_time = 0.5f;
+    // f32 max_fidget_time = 3.0f;
 };
 
 // @Cleanup: Because we want the default initialization goodness, we cannot use the intrusive syntax of visit_struct.h
@@ -58,6 +74,8 @@ VISITABLE_STRUCT(Gameplay_Visuals,
                  level_start_transition_time,
                  distance_epsilon,
                  wizard_teleport_pre_time,
-                 wizard_teleport_post_time);
+                 wizard_teleport_post_time,
+                 endpoint_teleport_pre_time,
+                 endpoint_teleport_post_time);
 
 extern Gameplay_Visuals gameplay_visuals;

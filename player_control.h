@@ -26,3 +26,8 @@ void update_game_camera(Entity_Manager *manager);
 void update_guy_active_flags(Entity_Manager *manager);
 
 Quaternion get_orientation_from_angles(f32 theta, f32 phi, f32 rho = 0);
+
+// These are axis of the world:
+extern Vector3 axis_right;
+extern Vector3 axis_forward;
+extern Vector3 axis_up;

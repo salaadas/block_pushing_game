@@ -367,7 +367,7 @@ void copy_slot(Entity *src, Entity *dest, Metadata_Item *item)
         auto slot_src  = reinterpret_cast<String*>(metadata_slot(src, item));
         auto slot_dest = reinterpret_cast<String*>(metadata_slot(dest, item));
 
-        free_string(slot_dest);
+        if (slot_dest->count) free_string(slot_dest);
 
         *slot_dest = copy_string(*slot_src);
     }

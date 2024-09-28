@@ -178,6 +178,8 @@ __attribute__((warn_unused_result))
 String join(RArr<String> inputs,         String separator,
             Allocator    allocator = {}, bool   null_terminate = false);
 
+String join(i64 nstrings, ...); // Temporary storage
+
 //
 // Split
  __attribute__((warn_unused_result))

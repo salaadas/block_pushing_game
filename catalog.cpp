@@ -27,20 +27,10 @@ void perform_reloads(Catalog_Base *base)
 
 String get_extension(String filename)
 {
-    auto index = find_index_from_right(filename, '.');
+    auto extension = find_character_from_right(filename, '.');
+    if (extension) advance(&extension, 1);
 
-    if (index == -1)
-    {
-        return String("");
-    }
-
-    index += 1;
-
-    String result = copy_string(filename, {global_context.temporary_storage, __temporary_allocator});
-    result.data += index;
-    result.count -= index;
-
-    return result;
+    return extension;
 }
 
 #include "main.h"
@@ -53,16 +43,15 @@ void add_relevent_files_and_parse(String short_name, String full_name, void *dat
     auto extensions_list = (RArr<String>*)(&catalog->extensions);
     String ext = get_extension(short_name);
 
-    // @Speed:
-    // If it is a directory, continue to traverse.
+    // @Speed: If it is a directory, continue to traverse.
     if (!ext || !array_find(extensions_list, ext))
     {
         visit_files(full_name, catalog, add_relevent_files_and_parse);
         return;
     }
 
-    short_name.count -= 1;
-    short_name.count -= ext.count;
+    short_name.count -= ext.count; // Remove the count of the extension length.
+    short_name.count -= 1;         // Remove the count of the '.' before the extension.
 
     // Be sure to copy_string the names in your proc because short_name is allocated in temp storage
     catalog->proc_register_loose_file(catalog, short_name, full_name);

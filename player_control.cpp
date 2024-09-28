@@ -1,13 +1,19 @@
 #include "player_control.h"
 
+//
+// Features: Add keymap module!
+//
+
 #include "main.h"
 #include "events.h"
 #include "sokoban.h"
 #include "time_info.h"
 #include "editor.h"
 #include "undo.h"
+#include "debug_draw.h"
+#include "hud.h"
 
-const f32 TIME_PER_MOVE_REPEAT = 0.22;
+const f32 TIME_PER_MOVE_REPEAT = 0.15; // @Fixme: This is such a bad idea. Because it needs to be lower than the visual interpolation duration, and you know,.... it is just a sign that we need to restructure our way of handling inputs.
 
 Key_Info key_left;
 Key_Info key_right;
@@ -38,7 +44,7 @@ void press(Key_Info *info, bool pressed, bool is_repeat = false)
     auto old_pressed = info->pressed;
 
     info->pressed = pressed;
-    info->repeat = is_repeat;
+    info->repeat  = is_repeat;
 
     if (!pressed) return;
 
@@ -71,11 +77,10 @@ void update_guy_active_flags(Entity_Manager *manager)
         */
         it->active = (it == hero) || (it->clone_of_id == hero_id);
 
-        // This is for when we do animation!
-        // if (!it->dead)
-        // {
-        //     change_active_state(it, it->active);
-        // }
+        if (!it->base->dead)
+        {
+            change_active_state(it, it->active);
+        }
     }
 
     // @Later
@@ -116,6 +121,28 @@ bool handle_global_event(Event *event)
     //     }
     // }
 #endif
+
+    // @Cleanup: Need developer keymap.
+    if (pressed)
+    {
+        if (key == Key_Code::CODE_F2) debug_draw_animation = !debug_draw_animation;
+        if (key == Key_Code::CODE_F3) debug_draw_shadow_map = !debug_draw_shadow_map;
+
+        if (key == Key_Code::CODE_SEMICOLON)
+        {
+            global_time_rate = global_time_rate / 4;
+
+            auto current_time = tprint(String("Time rate: %g"), global_time_rate);
+            game_report(current_time);
+        }
+        if (key == Key_Code::CODE_QUOTE)
+        {
+            global_time_rate = global_time_rate * 4;
+
+            auto current_time = tprint(String("Time rate: %g"), global_time_rate);
+            game_report(current_time);
+        }
+    }
 
     return false;
 }
@@ -356,9 +383,10 @@ void update_game_camera(Entity_Manager *manager)
 
         do_camera_orientation_input(theta, phi);
 
-        camera->forward.x = cosf(*theta) * cosf(*phi);
-        camera->forward.y = sinf(*theta) * cosf(*phi);
-        camera->forward.z = sinf(*phi);
+        // @Fixme @Cleanup: We should not modify forward_vector.
+        camera->forward_vector.x = cosf(*theta) * cosf(*phi);
+        camera->forward_vector.y = sinf(*theta) * cosf(*phi);
+        camera->forward_vector.z = sinf(*phi);
 
         camera->orientation = get_orientation_from_angles(*theta, *phi);
 

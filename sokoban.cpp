@@ -1,21 +1,13 @@
 /*
 ********************  TODO:  ********************
 NEXT DO THE VISUAL/GRAPHICS OF THE GAME because it looks like shit currently:
-- Mesh VBO's
 - Editor UI
-
 - Visual Interpolation of moves (not completely)
-- Interpolation of rotation.
 
-- Skeletal animations
 - Text fader of level
-- Animation playback
 - Time controlled animation
 
-
-
 - Shadow mapping
-- HDR
 - Bloom, Light Emitters
 - Lightmaps
 
@@ -79,6 +71,8 @@ I imagine the game loop is as folows:
 #include "metadata.h"
 #include "undo.h"
 #include "vars.h"
+#include "animation_player.h"
+#include "animation_channel.h"
 
 Gameplay_Visuals gameplay_visuals;
 
@@ -93,16 +87,47 @@ bool loading_first_level = true;
 
 void post_move_reevaluate(Entity_Manager *manager);
 
+void change_active_state(Guy *guy, bool active, bool force)
+{
+    if (guy->base->dead) return;
+
+    auto s = &guy->animation_state;
+
+    if (active)
+    {
+        if ((s->current_state != Human_Animation_State::ACTIVE) || force)
+        {
+            animate(guy, Human_Animation_State::ACTIVE);
+        }
+    }
+    else
+    {
+        if ((s->current_state != Human_Animation_State::INACTIVE) || force)
+        {
+            animate(guy, Human_Animation_State::INACTIVE);
+        }
+    }
+}
+
 // @Cleanup: This doesn't need to be this complicated
 void init_level_general(bool reset)
 {
-    if (sokoban_entity_manager)
+    auto manager = sokoban_entity_manager;
+
+    if (manager)
     {
-        if (reset) reset_entity_manager(sokoban_entity_manager);
+        for (auto e : manager->all_entities)
+        {
+            array_add(&manager->entities_to_clean_up, e);
+        }
+
+        if (reset) reset_entity_manager(manager);
     }
     else
     {
         sokoban_entity_manager = make_entity_manager();
+        manager = sokoban_entity_manager;
+
         reset = true;
         current_level_index = 0;
     }
@@ -110,7 +135,7 @@ void init_level_general(bool reset)
     if (reset)
     {
         // Reset the undo system
-        reset_undo(sokoban_entity_manager->undo_handler);
+        reset_undo(manager->undo_handler);
 
         auto set = global_context.current_level_set;
         assert((set != NULL));
@@ -141,10 +166,18 @@ void init_level_general(bool reset)
         // @Temporary @Hardcoded: level_path as files in the data/levels directory
         String level_path = tprint(String("data/levels/%s.ascii_level"), temp_c_string(level_name));
 
-        load_ascii_level(sokoban_entity_manager, level_path);
+        load_ascii_level(manager, level_path);
+
+        for (auto guy : manager->_by_guys)
+        {
+            
+            if (guy->base->animation_player) reset_animations(guy->base->animation_player); // This is because right now, not every guy has an Animation_Player.
+                
+            change_active_state(guy, guy->active, true);
+        }
 
         // After load the level, mark the beginning of the undo system
-        undo_mark_beginning(sokoban_entity_manager);
+        undo_mark_beginning(manager);
     }
 }
 
@@ -431,6 +464,9 @@ void check_for_victory(Entity_Manager *manager)
 
         if (door && !it->base->dead)
         {
+            // @Fixme: @Bug @Bug: This is wrong code here.
+            // @Fixme: @Bug @Bug: This is wrong code here.
+            // @Fixme: @Bug @Bug: This is wrong code here.
             array_unordered_remove_by_value(&unoccupied_doors, door);
         }
         else
@@ -483,7 +519,7 @@ void update_physical_position(Entity *e, Vector3 new_position)
     }
 }
 
-void move_entity(Entity *e, Vector3 delta, bool is_teleport, Pid sync_id = 0, f32 duration = -1.0f, Transaction_Id transaction_id = 0, Source_Location loc = Source_Location::current())
+void move_entity(Entity *e, Vector3 delta, Move_Type move_type = Move_Type::LINEAR, Pid sync_id = 0, f32 duration = -1.0f, Transaction_Id transaction_id = 0, Source_Location loc = Source_Location::current())
 {
     auto manager = e->manager;
 
@@ -491,22 +527,30 @@ void move_entity(Entity *e, Vector3 delta, bool is_teleport, Pid sync_id = 0, f3
 
     if (!doing_undo)
     {
-        auto _duration = duration;
-        if ((_duration < 0) && (cmp_var_type_to_type(e->type, Guy)))
+        if ((duration < 0) && (cmp_var_type_to_type(e->type, Guy)))
         {
             // auto override_speed = get_move_speed_override(Down<Guy>(e));
             auto override_speed = -1.0;
-            if (override_speed > 0) _duration = 1 / override_speed;
+            if (override_speed > 0) duration = 1 / override_speed;
         }
 
         // Pid moving_onto_id; // @Note: Used this with mobile_supporter (I think it is related to falling).
-        add_visual_interpolation(e, e->position, new_position, is_teleport, _duration, transaction_id, loc);
+        add_visual_interpolation(e, e->position, new_position, move_type, duration, transaction_id, loc);
 
         // if (moving_onto_id) e->visual_interpolation.moving_onto_id = moving_onto_id;
         if (sync_id != e->entity_id) e->visual_interpolation.sync_id = sync_id; // Callers can be sloppy and pass their own id; in those cases we igonre it. This simpilifies some 'if' statements.
     }
 
     update_physical_position(e, new_position);
+}
+
+void set_teleport_times(Entity *e, f32 pre_time, f32 post_time)
+{
+    auto v = &e->visual_interpolation;
+    if (v->move_type != Move_Type::TELEPORT) return; // Sanity check, in case something happens.
+
+    v->teleport_pre_time  = pre_time;
+    v->teleport_post_time = post_time;
 }
 
 bool can_go(Entity *mover, Proximity_Grid *grid, Vector3 desired_pos, Vector3 delta, bool can_push, RArr<Entity*> *pushes, bool voluntarily = true) // Pid id_to_ignore = 0
@@ -538,7 +582,7 @@ bool can_go(Entity *mover, Proximity_Grid *grid, Vector3 desired_pos, Vector3 de
     for (auto e : found)
     {
         // if (e->entity_id == id_to_ignore) continue;
-        // if (e->entity->scheduled_for_destructoin) continue;
+        // if (e->entity->scheduled_for_destruction) continue;
         if (cmp_var_type_to_type(e->type, Guy))
         {
             auto guy = Down<Guy>(e);
@@ -548,7 +592,7 @@ bool can_go(Entity *mover, Proximity_Grid *grid, Vector3 desired_pos, Vector3 de
         if (e->entity_id == mover->entity_id &&
             (delta != Vector3(0, 0, 0)))
         {
-            printf("[can_go]: Next position of should not have the current mover there!!!!\n");
+            logprint("can_go", "Next position of should not have the current mover there!!!!\n");
             assert(0);
             return true;
         }
@@ -599,8 +643,11 @@ void move_individual_guy(Guy *guy, Vector3 delta, Transaction_Id transaction_id 
         if (wall) delta = Vector3(0, 0, 0);
     }
 
-    // @Cleanup: merge with the movement code for fighter/thief
-    if (guy->can_teleport)
+    bool someone_moved = false;
+    bool did_pulled = false;
+    bool did_pushed = false;
+
+    if (guy->can_teleport) // Collapse this with the below movement for push and pull.
     {
         Vector3 teleport_delta = delta;
 
@@ -640,7 +687,17 @@ void move_individual_guy(Guy *guy, Vector3 delta, Transaction_Id transaction_id 
 
         if (other)
         {
-            move_entity(other, teleport_delta * -1.0f, false);
+            auto pre1  = gameplay_visuals.wizard_teleport_pre_time;
+            auto post1 = gameplay_visuals.wizard_teleport_pre_time;
+
+            auto pre2  = gameplay_visuals.endpoint_teleport_pre_time;
+            auto post2 = gameplay_visuals.endpoint_teleport_pre_time;
+
+            move_entity(guy->base, teleport_delta, Move_Type::TELEPORT, 0, pre1 + post1);
+            move_entity(other, teleport_delta * -1.0f, Move_Type::TELEPORT, 0, pre2 + post2);
+
+            set_teleport_times(guy->base, pre1, post1);
+            set_teleport_times(other, pre2, post2);
         }
         else
         {
@@ -648,9 +705,11 @@ void move_individual_guy(Guy *guy, Vector3 delta, Transaction_Id transaction_id 
             // Then we check if we can go regularly to the desired position.
             bool can = can_go(guy->base, grid, original_pos + teleport_delta, delta, guy->can_push, NULL, true);
             if (!can) return;
+
+            move_entity(guy->base, teleport_delta, Move_Type::LINEAR, 0, -1, transaction_id);
         }
         
-        move_entity(guy->base, teleport_delta, guy->can_teleport, 0, -1, transaction_id);
+        someone_moved = true;
     }
     else
     {
@@ -664,13 +723,18 @@ void move_individual_guy(Guy *guy, Vector3 delta, Transaction_Id transaction_id 
 
         if (!can) return;
 
-        move_entity(guy->base, delta, guy->can_teleport, 0, -1, transaction_id);
+        move_entity(guy->base, delta, Move_Type::LINEAR, 0, -1, transaction_id);
         auto sync_id = guy->base->entity_id;
+
+        if (pushed.count)
+        {
+            did_pushed = true;
+        }
 
         for (auto it : pushed)
         {
             // Setting teleport to false because you don't want the wizard to teleport when pushed.
-            move_entity(it, delta, false, sync_id, -1, transaction_id);
+            move_entity(it, delta, Move_Type::LINEAR, sync_id, -1, transaction_id);
         }
 
         if (guy->can_pull)
@@ -682,9 +746,13 @@ void move_individual_guy(Guy *guy, Vector3 delta, Transaction_Id transaction_id 
                 // We assume that the original position of the Thief is not occupied
                 // Right after it has moved.
                 // @Todo: Should we should do a can_go check here?
-                move_entity(pulled_entity, delta, false, sync_id, -1, transaction_id);
+                move_entity(pulled_entity, delta, Move_Type::LINEAR, sync_id, -1, transaction_id);
             }
+
+            did_pulled = true;
         }
+
+        someone_moved = true;
     }
 
     // We know that we have moved if we reach here, so we call undo handler to cache to differences.
@@ -693,7 +761,104 @@ void move_individual_guy(Guy *guy, Vector3 delta, Transaction_Id transaction_id 
     undo_end_frame(undo_handler);
 
     post_move_reevaluate(manager);
+
+    if (!guy->base->dead && someone_moved)
+    {
+        if (did_pulled)
+        {
+            animate(guy, Human_Animation_State::PULLING);
+        }
+        else if (did_pushed)
+        {
+            animate(guy, Human_Animation_State::PUSHING);
+        }
+        else
+        {
+            animate(guy, Human_Animation_State::WALKING);
+        }
+    }
+
     check_for_victory(manager); // @Incomplete: Wait for all movement visuals to end before transitioning levels.
+}
+
+void animate(Guy *guy, Human_Animation_State::Gameplay_State state)
+{
+    if (!guy->base->animation_player) return;
+
+    auto s = &guy->animation_state;
+
+    if (guy->base->dead && (state == Human_Animation_State::DEAD)) return; // @Hack so that we don't need to worry about this stuff elsewhere....
+
+    // This means that we are animating that state right now so don't change our state.
+    if ((s->current_state == state) && (guy->base->animation_player->channels.count))
+    {
+        return;
+    }
+
+    s->current_state = state;
+
+    auto graph = human_animation_graph;
+    switch (state)
+    {
+        case Human_Animation_State::UNINITIALIZED: {
+            logprint("animate", "Error: Attempted to animate '%s' by setting its state to UNINITIALIZED, which should not happen!\n", temp_c_string(guy->base->mesh_name));
+        } break;
+        case Human_Animation_State::INACTIVE: {
+            send_message(graph, s, String("go_state_inactive"), String("StateInactive"));
+        } break;
+        case Human_Animation_State::ACTIVE: {
+            send_message(graph, s, String("go_state_active"), String("StateActive"));
+        } break;
+        case Human_Animation_State::WALKING: {
+            send_message(graph, s, String("go_state_walking"), String("StateWalking"));
+        } break;
+        case Human_Animation_State::PUSHING: {
+            send_message(graph, s, String("go_state_pushing"), String("StatePushing"));
+        } break;
+        case Human_Animation_State::PULLING: {
+            send_message(graph, s, String("go_state_pulling"), String("StatePulling"));
+        } break;
+        case Human_Animation_State::DEAD: {
+            send_message(graph, s, String("go_state_dead"), String("StateDead"));
+        } break;
+    }
+
+/*
+    auto names_table = &s->animation_names->name_to_anim_name;
+
+    auto play_or_skip = [](Table<String, String> *names_table, String string_state, Entity *e) {
+        auto [anim_name, success] = table_find(names_table, string_state);
+        if (!success)
+        {
+            logprint("animate", "Couldn't find the animation for the state '%s', not playing animation...\n", temp_c_string(string_state));
+            return;
+        }
+
+        play_animation(e, anim_name);
+    };    
+
+    switch (state)
+    {
+        case Human_Animation_State::INACTIVE: {
+            play_or_skip(names_table, String("inactive"), guy->base);
+        } break;
+        case Human_Animation_State::ACTIVE: {
+            play_or_skip(names_table, String("active"), guy->base);
+        } break;
+        case Human_Animation_State::WALKING: {
+            play_or_skip(names_table, String("walking"), guy->base);
+        } break;
+        case Human_Animation_State::PUSHING: {
+            play_or_skip(names_table, String("pushing"), guy->base);
+        } break;
+        case Human_Animation_State::PULLING: {
+            play_or_skip(names_table, String("pulling"), guy->base);
+        } break;
+        case Human_Animation_State::DEAD: {
+            play_or_skip(names_table, String("dead"), guy->base);
+        } break;
+    }
+*/
 }
 
 void evaluate_gates(Entity_Manager *manager)
@@ -799,8 +964,8 @@ void enact_move(Entity_Manager *manager, Buffered_Move move, bool is_interrupt_m
     assert(!is_interrupt_move);
     if (is_interrupt_move) return;
 
-    auto guy_id = move.id;
-    auto delta  = move.delta;
+    auto guy_id         = move.id;
+    auto delta          = move.delta;
     auto caused_changes = false;
     auto some_not_dead  = false;
 
@@ -974,7 +1139,6 @@ bool XXX_should_queue_input(Key_Info *info)
 
 void generate_buffered_moves_from_held_keys(Entity_Manager *manager)
 {
-    // @Temporary: :PlayerControl
     if (XXX_should_queue_input(&key_left))  queue_game_control(Vector3(-1,  0, 0), key_left.repeat);
     if (XXX_should_queue_input(&key_right)) queue_game_control(Vector3( 1,  0, 0), key_right.repeat);
     if (XXX_should_queue_input(&key_down))  queue_game_control(Vector3( 0, -1, 0), key_down.repeat);
@@ -1017,8 +1181,129 @@ void do_input(Entity_Manager *manager)
     enact_next_buffered_move(manager);
 }
 
+Pose_Channel *play_animation(Entity *e, Sampled_Animation *anim, f32 t0, f32 blend_out_duration, Sampled_Animation *next)
+{
+    if (!e->animation_player) return NULL;
+    if (!anim)                return NULL;
+
+    Pose_Channel *new_channel = NULL;
+    for (auto channel : e->animation_player->channels)
+    {
+        assert(channel->type == Pose_Channel_Type::ANIMATION); // We are not handling IK...
+        if (channel->type == Pose_Channel_Type::ANIMATION)
+        {
+            if (channel->blend_out_t < 0)
+            {
+                // Don't stutter the animation if it is the current playing one.
+                if (channel->animation == anim)
+                {
+                    new_channel = channel;
+                    break; // We fall through and do the stuff below the loop.
+                }
+                else
+                {
+                    channel->blend_out_t = 0;
+                    channel->blend_out_duration = blend_out_duration;
+                }
+            }
+        }
+    }
+
+    if (!new_channel)
+    {
+        new_channel = add_animation_channel(e->animation_player);
+    }
+
+    set_animation(new_channel, anim, t0);
+
+    if (next)
+    {
+        new_channel->should_loop     = false;
+//        new_channel->transition_into = next;
+    }
+    else
+    {
+        new_channel->should_loop     = true;
+    }
+
+    return new_channel;
+}
+
+void play_animation(Entity *e, String name, bool looping, bool frozen, f32 t0, bool blend)
+{
+    assert(e->animation_player);
+    auto anim_name = join(3, e->mesh_name, String("_"), name);
+
+    auto anim = catalog_find(&animation_catalog, anim_name);
+
+    if (anim && anim->num_samples)
+    {
+        if (!blend) reset_animations(e->animation_player);
+
+        auto channel = play_animation(e, anim, t0);
+        if (channel)
+        {
+            if (frozen) set_speed(channel, 0);
+            else        set_speed(channel, 1);
+
+            channel->should_loop = looping;
+        }
+    }
+    else
+    {
+        logprint("play_animation", "Error: Unable to play animation '%s'.\n", temp_c_string(anim_name));
+    }
+}
+
+inline
+void update_animation(Entity *e, f32 dt)
+{
+    if (e->animation_player)
+    {
+        auto speed = 1.0f;
+
+        if (cmp_var_type_to_type(e->type, Guy))
+        {
+            auto guy = Down<Guy>(e);
+            animation_graph_per_frame_update(human_animation_graph, &guy->animation_state, guy->base->animation_player);
+        }
+
+/*
+        if (cmp_var_type_to_type(e->type, Monster))
+        {
+            auto monster = Down<Monster>(e);
+            auto speed = 1 - monster->dead_t;
+            Clamp(&speed, 0.0f, 1.0f);
+        }
+*/
+
+        auto player = e->animation_player;
+        accumulate_time(player, dt);
+        eval(player);
+    }
+
+/*
+    if (cmp_var_type_to_type(e->type, Monster))
+    {
+        if (e->dead)
+        {
+            auto monster = Down<Monster>(e);
+            auto rate = 2.5f;
+            monster->dead_t = move_toward(e->dead_t, 1, dt * rate);
+        }
+    }
+*/
+}
+
 void simulate(Entity_Manager *manager)
 {
+    auto dt = timez.current_dt;
+
+    for (auto guy : manager->_by_guys)
+    {
+        update_animation(guy->base, dt);
+    }
+
     auto buffered = 0;
     for (auto it : manager->buffered_moves)
     {
@@ -1031,9 +1316,9 @@ void simulate(Entity_Manager *manager)
         // @Incomplete: Speed up the animation dt here.
     }
 
-    update_entities_visual_interpolation(manager, timez.current_dt);
+    update_entities_visual_interpolation(manager, dt);
 
-    // // @Incomplete:
+    // @Incomplete:
 
     // auto active_guy = get_active_hero(manager);
 
@@ -1065,3 +1350,49 @@ void simulate_sokoban()
     do_input(manager);
     simulate(manager);
 }
+
+
+/*
+void skin_mesh(Animation_Player *player)
+{
+    auto mesh = player->mesh;
+    assert(mesh->skeleton_info);
+
+    if (mesh->skinned_vertices.count == 0)
+    {
+        array_resize(&mesh->skinned_vertices, mesh->vertices.count);
+    }
+
+    auto num_bones = mesh->skeleton_info->skeleton_node_info.count;
+
+    auto it_index = 0;
+    for (auto v : mesh->vertices)
+    {
+        auto blend = &mesh->skeleton_info->vertex_blend_info[it_index];
+
+        // @Incomplete: Missing normals and tangents blend.
+        Vector4 r(0.0f);
+        Vector4 v4(v.x, v.y, v.z, 1);
+
+        for (auto j = 0; j < blend->num_matrices; ++j)
+        {
+            // @Speed:
+            auto piece = blend->pieces[j];
+
+            auto tv = mesh->skinning_matrices[piece.matrix_index] * v4;
+            r += tv * piece.matrix_weight;
+        }
+
+        if (r.w)
+        {
+            r.x /= r.w;
+            r.y /= r.w;
+            r.z /= r.w;
+        }
+
+        mesh->skinned_vertices[i] = Vector3(r.x, r.y, r.z);
+
+        it_index += 1;
+    }    
+}
+*/

@@ -360,20 +360,31 @@ void per_frame_update_mouse_position()
     last_mouse_y = iy;
 }
 
+u64 glfw_cursor_state = GLFW_CURSOR_NORMAL;
+
+inline
+void set_glfw_cursor_mode(GLFWwindow *glfw_window, u64 mode)
+{
+    if (mode == glfw_cursor_state) return; // So that we don't flicker.
+    glfw_cursor_state = mode;
+
+    glfwSetInputMode(glfw_window, GLFW_CURSOR, mode);
+}
+
 void hide_os_cursor(GLFWwindow *glfw_window)
 {
-    glfwSetInputMode(glfw_window, GLFW_CURSOR, GLFW_CURSOR_HIDDEN);
+    set_glfw_cursor_mode(glfw_window, GLFW_CURSOR_HIDDEN);
 }
 
 void show_os_cursor(GLFWwindow *glfw_window)
 {
-    glfwSetInputMode(glfw_window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+    set_glfw_cursor_mode(glfw_window, GLFW_CURSOR_NORMAL);
 }
 
 // Used for locking the the mouse cursor for camera controls
 void disable_os_cursor(GLFWwindow *glfw_window)
 {
-    glfwSetInputMode(glfw_window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+    set_glfw_cursor_mode(glfw_window, GLFW_CURSOR_DISABLED);
 }
 
 bool ui_button_was_pressed(Key_Code key_code)

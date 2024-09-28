@@ -179,6 +179,7 @@ void expand(Table<K, V> *table)
     {
         // printf("Expanding, literally, count %ld, slots_filled %ld, allocated %ld\n",
         //        table->count , table->slots_filled, table->allocated);
+
         // Else, we double the current table
         new_allocated = table->allocated * 2;
     }
@@ -196,7 +197,7 @@ void expand(Table<K, V> *table)
             table_add(table, old_entries[i].key, old_entries[i].value);
     }
 
-    my_free(old_entries, table->allocator);
+    if (old_allocated) my_free(old_entries, table->allocator);
 }
 
 template <typename K, typename V>

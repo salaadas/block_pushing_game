@@ -2119,7 +2119,7 @@ enum Damage_Resistance
 };
 u32 damage_resistance = 0;
 
-bool first_time = true; // @Temporary:
+static bool first_time = true; // @Temporary:
 void draw_ui()
 {
     auto dt = timez.ui_dt;

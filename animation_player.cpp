@@ -12,12 +12,6 @@
 //     Xform_State state;
 // };
 
-void init_player(Animation_Player *player)
-{
-    player->current_state  = &player->state1;
-    player->previous_state = &player->state0;
-}
-
 void set_mesh(Animation_Player *player, Triangle_Mesh *mesh)
 {
     if (!mesh) return;
@@ -39,20 +33,21 @@ void set_mesh(Animation_Player *player, Triangle_Mesh *mesh)
         array_reset(&player->output_matrices);
 
         auto nodes_count = skeleton->skeleton_node_info.count;
-        // array_resize(&player->mesh_parent_indices, nodes_count);
-        // array_resize(&player->output_matrices,     nodes_count);
+        array_resize(&player->mesh_parent_indices, nodes_count);
+        array_resize(&player->output_matrices,     nodes_count);
+
+        auto m = Matrix4(1.0f);
 
         i32 it_index = 0;
         for (auto &node : skeleton->skeleton_node_info)
         {
             auto name = node.name;
 
-            table_add(&player->node_name_to_index_map, name, it_index);
-            array_add(&player->mesh_parent_indices, -1); // We have to back-fill these dynamically, later in 'update_hierarchy'.
+            // printf("-- Adding a mapping from '%s' -> %d\n", temp_c_string(node.name), it_index);
 
-            auto m = node.rest_object_space_to_object_space;
-            auto mi = glm::inverse(m);
-            array_add(&player->output_matrices, mi);
+            table_add(&player->node_name_to_index_map, name, it_index);
+            player->mesh_parent_indices[it_index] = -1; // We have to back-fill these dynamically, later in 'update_hierarchy'.
+            player->output_matrices[it_index] = m;
 
             it_index += 1;
         }
@@ -61,10 +56,21 @@ void set_mesh(Animation_Player *player, Triangle_Mesh *mesh)
     }
 }
 
+void reset_animations(Animation_Player *player)
+{
+    for (auto it : player->channels)
+    {
+        my_free(it);
+    }
+
+    array_reset(&player->channels);
+}
+
 Pose_Channel *add_animation_channel(Animation_Player *player)
 {
     auto channel = New<Pose_Channel>();
     channel->my_aplayer = player;
+    channel->type = Pose_Channel_Type::ANIMATION;
 
     array_add(&player->channels, channel);
     player->needs_hierarchy_update = true;
@@ -74,14 +80,36 @@ Pose_Channel *add_animation_channel(Animation_Player *player)
 
 void accumulate_time(Animation_Player *player, f64 dt)
 {
-    for (auto channel : player->channels)
+    // Explicit iteration so that we ordered-remove.
+    i64 target = 0;
+    for (i64 i = 0; i < player->channels.count; ++i)
     {
+        auto channel = player->channels[i];
+
+        // IK channels don't really accumulate time...
         if (channel->type == Pose_Channel_Type::ANIMATION)
         {
             accumulate_time(channel, dt);
+            if (channel->blend_out_t >= 0)
+            {
+                channel->blend_out_t += dt;
+                if (channel->blend_out_t >= channel->blend_out_duration)
+                {
+                    // Ordered remove...
+                    my_free(channel);
+                    continue;
+                }
+            }
         }
 
-        // IK channels don't really accumulate time...
+        if (target != i) player->channels[target] = channel;
+        target += 1;
+    }
+
+    auto num_removed = player->channels.count - target;
+    if (num_removed)
+    {
+        player->channels.count -= num_removed;
     }
 
     player->current_time += dt;
@@ -148,18 +176,6 @@ void update_hierarchy(Animation_Player *player)
     }
 }
 
-void make_current_state_be_previous_state(Animation_Player *player)
-{
-    auto temp = player->previous_state;
-    player->previous_state = player->current_state;
-    player->current_state  = temp;
-
-    if (player->mesh && player->mesh->skeleton_info)
-    {
-        array_resize(&player->current_state->xforms, player->mesh->skeleton_info->skeleton_node_info.count);
-    }
-}
-
 // Got from https://youtu.be/aeDMABSW_KE?si=xUzPJ5-c332tg_aV
 Quaternion cmuratori_get_orientation(Matrix4 m)
 {
@@ -214,19 +230,6 @@ Quaternion cmuratori_get_orientation(Matrix4 m)
     return q;
 }
 
-void set_from_matrix(Xform_State *state, Matrix4 m) // @Speed:
-{
-    Vector3 mx(m[0][0], m[1][0], m[2][0]); // First row.
-    Vector3 my(m[0][1], m[1][1], m[2][1]); // Second row.
-    Vector3 mz(m[0][2], m[1][2], m[2][2]); // Third row.
-
-    state->scale = Vector3(glm::length(mx), glm::length(my), glm::length(mz));
-    state->translation = Vector3(m[3][0], m[3][1], m[3][2]);
-
-    state->orientation = cmuratori_get_orientation(m); // @Cleanup: Why use this instead of the below?
-    // state->orientation = glm::quat_cast(m);
-}
-
 void eval(Animation_Player *player, bool allow_discontinuity_blending)
 {
     player->num_changed_channels_since_last_eval = 0;
@@ -236,7 +239,7 @@ void eval(Animation_Player *player, bool allow_discontinuity_blending)
 
     // if (!channels[0]->is_active) return; // @Hack: Until we have an animation channel 0, don't try to layer anything on top or push output transforms. This is because channel 0 is our main channel.
 
-    if (!channels[0]->states.count) return;
+    if (!channels[0]->states_relative_to_parent.count) return;
 
     if (player->needs_hierarchy_update)
     {
@@ -257,70 +260,108 @@ void eval(Animation_Player *player, bool allow_discontinuity_blending)
     }
 
     player->num_changed_channels_since_last_eval = num_changed;
-
     if (num_changed == 0) return; // Early out if nothing changed.
 
-    make_current_state_be_previous_state(player);
+    if (player->mesh && player->mesh->skeleton_info)
+    {
+        array_resize(&player->current_states, player->mesh->skeleton_info->skeleton_node_info.count);
+    }
 
-    auto current_state = player->current_state;
-    array_resize(&player->transforms_relative_to_parent, current_state->xforms.count);
+    array_resize(&player->states_relative_to_parent, player->current_states.count);
 
     //
-    // Copy the Animation_Channel transforms data into ours.
+    // Copy the Pose_Channel transforms data into ours.
     //
+    auto first = true;
+    auto last_blend_factor = 1.0f;
+    // auto last_blend_name = String("(none)"); // For debugging.
+
     for (auto channel : channels)
     {
         if (channel->type != Pose_Channel_Type::ANIMATION) continue;
 
         // Assert that we have enough nodes for the transforms data.
-        assert(channel->nodes_info.count >= channel->transforms_relative_to_parent.count);
+        assert(channel->nodes_info.count >= channel->states_relative_to_parent.count);
 
         i64 it_index = 0;
         for (auto &info : channel->nodes_info)
         {
-            if (info.aplayer_index == -1) continue;
+            auto a_index = info.aplayer_index;
 
-            assert(info.aplayer_index < player->transforms_relative_to_parent.count);
-            if (info.aplayer_index >= player->transforms_relative_to_parent.count) continue;
+            if (a_index == -1) continue;
 
-            assert(it_index < channel->transforms_relative_to_parent.count);
-            if (it_index >= channel->transforms_relative_to_parent.count) continue;
+            assert(a_index < player->states_relative_to_parent.count);
+            if (a_index >= player->states_relative_to_parent.count) continue;
 
-            player->transforms_relative_to_parent[info.aplayer_index] = channel->transforms_relative_to_parent[it_index];
+            assert(it_index < channel->states_relative_to_parent.count);
+            if (it_index >= channel->states_relative_to_parent.count) continue;
+
+            if (first)
+            {
+                player->states_relative_to_parent[a_index] = channel->states_relative_to_parent[it_index];
+            }
+            else
+            {
+                if (last_blend_factor != 1)
+                {
+                    auto lerped = lerp(player->states_relative_to_parent[a_index], channel->states_relative_to_parent[it_index], last_blend_factor);
+
+                    player->states_relative_to_parent[a_index] = lerped;
+                }
+                else
+                {
+                    player->states_relative_to_parent[a_index] = channel->states_relative_to_parent[it_index];
+                }
+
+                // last_blend_name = channel->animation->name; // In case we want it for debugging.
+            }
 
             it_index += 1;
         }
+
+        if (channel->blend_out_t < 0)
+        {
+            last_blend_factor = 1.0f;
+            channel->blend_factor_for_debug_output = 1; // Special case.
+        }
+        else
+        {
+            last_blend_factor = channel->blend_out_t / channel->blend_out_duration;
+            Clamp(&last_blend_factor, 0.0f, 1.0f);
+            channel->blend_factor_for_debug_output = 1 - last_blend_factor;
+        }
+
+        first = false;
     }
 
     //
     // Concatenate all our local transforms into global ones. Also, extract the states from each
     // matrix so that we can interpolate reasonably.
     //
-    // @Speed: We should think about not storing the local transforms as matrices when we
-    // stored them during the 'eval' in the Animation_Channel. Rather, we should store them
-    // as Xform_States to avoid decomposition here.
-    //
-    for (i64 i = 0; i < current_state->xforms.count; ++i)
+    for (i64 i = 0; i < player->current_states.count; ++i)
     {
-        auto parent_index = player->mesh_parent_indices[i];
+        // @Speed: We should instead make a * operator for Xform State.
+
+        Matrix4 my_state;
+        get_matrix(player->states_relative_to_parent[i], &my_state);
 
         Matrix4 m;
+        auto parent_index = player->mesh_parent_indices[i];
         if (parent_index >= 0)
         {
             assert(parent_index < i);
 
             Matrix4 parent_state;
-            get_matrix(current_state->xforms[parent_index], &parent_state); // We know the parent_state is updated because our parent's index must be less than ours, and we are iterating over this array in order.
+            get_matrix(player->current_states[parent_index], &parent_state); // We know the parent_state is updated because our parent's index must be less than ours, and we are iterating over this array in order.
 
-            m = parent_state * player->transforms_relative_to_parent[i];
+            m = parent_state * my_state;
         }
         else
         {
-            m = player->transforms_relative_to_parent[i];
+            m = my_state;
         }
 
-        // @Speed: This is the slow part.
-        set_from_matrix(&current_state->xforms[i], m);
+        set_from_matrix(&player->current_states[i], m);
     }
 
 /* @Incomplete: No discontinuities for now.
@@ -353,33 +394,50 @@ void eval(Animation_Player *player, bool allow_discontinuity_blending)
     }
 
     interpolate_discontinuities(player);
+*/
 
-    // @Incomplete: No remove_locomotions for now.
-    if (current_state->xforms.count && player->remove_locomotion)
+    if (player->current_states.count && player->remove_locomotion)
     {
         // Clear locomotion from the animation player.
-        auto root_translation = current_state->xforms[0].translation;
+        auto root_translation          = player->current_states[0].translation;
         Vector3 translation_correction = -root_translation;
 
         // This @Hack makes the root bone positioned at the projection point of the pelvis
         // on the ground plane (because most of the game logic happens at the feet of the mesh).
         translation_correction.z = 0.f;
 
-        for (i64 i = 0; i < current_state->xforms.count; ++i)
+        for (i64 i = 0; i < player->current_states.count; ++i)
         {
-            auto state = &current_state->xforms[i];
+            auto state = &player->current_states[i];
             state->translation += translation_correction;
         }
     }
-*/
 
-    array_resize(&player->output_matrices, current_state->xforms.count);
+    auto mesh = player->mesh;
+    assert(mesh);
 
     // @Speed: Fill in the output transforms....
-    for (i64 i = 0; i < current_state->xforms.count; ++i)
+    for (i64 i = 0; i < player->current_states.count; ++i)
     {
-        get_matrix(current_state->xforms[i], &player->output_matrices[i]);
+        Matrix4 m;
+        get_matrix(player->current_states[i], &m);
+        player->output_matrices[i] = m * mesh->skeleton_info->skeleton_node_info[i].rest_object_space_to_object_space;
     }
 
     player->eval_count += 1;
+}
+
+Pose_Channel *get_primary_animation_channel(Animation_Player *player)
+{
+    if (!player) return NULL;
+
+    for (i64 it_index = player->channels.count - 1; it_index >= 0; --it_index)
+    {
+        auto channel = player->channels[it_index];
+        if (channel->type != Pose_Channel_Type::ANIMATION) continue;
+
+        return channel;
+    }
+
+    return NULL;
 }

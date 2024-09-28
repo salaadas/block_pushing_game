@@ -207,14 +207,12 @@ void pump_linux_notifications()
 
             if (count >= 2)
             {
-                if ((short_name[0]) == '.' && (short_name[1] == '#'))
-                    reject = true;
+                if ((short_name[0]) == '.' && (short_name[1] == '#')) reject = true;
             }
 
             if (count >= 2)
             {
-                if ((short_name[0]) == '#' && (short_name[count - 1] == '#'))
-                    reject = true;
+                if ((short_name[0]) == '#' && (short_name[short_name.count - 1] == '#')) reject = true;
             }
 
             if (reject)

@@ -40,7 +40,7 @@ template <typename V>
 struct Catalog
 {
     Catalog_Base      base;
-    Table<String, V*> table;
+    Table<String, V*> table; // This guarantees pointer stability because for each of the entry, we do make_placeholder which New<>() an asset so that when the table resizes, we still have the valid pointer to the memory of the asset.
 };
 
 void   perform_reloads(Catalog_Base *base);
@@ -72,10 +72,6 @@ V *catalog_find(Catalog<V> *catalog, String short_name, bool log_on_not_found = 
     return value;
 }
 
-// @Important: For a catalog, ex Shader_Catalog, we must define the below two functions
-// void XXX_register_loose_file(Catalog_Base *base, String short_name, String full_name);
-// void XXX_perform_reload_or_creation(Catalog_Base *base, String short_name, String full_name, bool do_load_asset);
-
 template <class V> // @Important 'V' must be a catalog file type!
 void my_register_loose_file(Catalog_Base *base, String short_name, String full_name)
 {
@@ -94,8 +90,9 @@ void my_register_loose_file(Catalog_Base *base, String short_name, String full_n
 
     V *new_catalog_file = make_placeholder(desired_catalog, short_name, full_name);
 
-    reload_asset(desired_catalog, new_catalog_file);
-    new_catalog_file->loaded = true;
+    // // Commenting these out because we only want to load file asset on demand.
+    // reload_asset(desired_catalog, new_catalog_file);
+    // new_catalog_file->loaded = true;
 
     String table_key = copy_string(new_catalog_file->name);
     table_add(&desired_catalog->table, table_key, new_catalog_file);
@@ -113,15 +110,14 @@ void my_perform_reload_or_creation(Catalog_Base *base, String short_name, String
 
     if (!pointer)
     {
-        logprint("catalog", "Making new asset '%s':'%s' \n", temp_c_string(short_name), temp_c_string(full_name));
+        logprint("catalog", "Making new asset '%s' at path '%s'!\n", temp_c_string(short_name), temp_c_string(full_name));
         base->proc_register_loose_file(base, short_name, full_name);
     }
     else
     {
-        logprint("catalog", "Reloading file for catalog '%s' -> '%s'\n", temp_c_string(base->my_name), temp_c_string(short_name));
+        logprint("catalog", "Reloading asset '%s' of catalog '%s'!\n", temp_c_string(short_name), temp_c_string(base->my_name));
 
-        // @Fixme @Leak @Leak @Leak: We are not freeing the old thing in reload_asset!!!!
-        // Should we leave the freeing part up to the reload_asset procedure?
+        // We leave the freeing part up to the reload_asset procedure! So the catalogs must take responsibility for this.
         reload_asset(desired_catalog, *pointer);
     }
 }

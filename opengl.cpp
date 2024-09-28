@@ -2,6 +2,7 @@
 // So, M[4][1] means the first row of the last column
 
 #include "opengl.h"
+#include "draw.h"
 
 #define xxx (void*)
 
@@ -16,9 +17,15 @@ GLFWwindow *glfw_window;
 i32 render_target_width;
 i32 render_target_height;
 
+i32 shadow_map_width  = 0;
+i32 shadow_map_height = 0;
+Texture_Map *shadow_map_buffer = NULL;
+Texture_Map *shadow_map_depth  = NULL;
+
 Texture_Map *the_depth_buffer = NULL;
 Texture_Map *the_back_buffer = NULL;
 Texture_Map *the_offscreen_buffer = NULL;
+Texture_Map *the_ldr_buffer = NULL; // This is used an a resolved buffer for the offscreen_buffer when it is multisampled. @Incomplete: Try and coerce the multisampled version and the non-multisampled version.
 i32 XXX_the_offscreen_buffer_width  = 1920;
 i32 XXX_the_offscreen_buffer_height = 1080;
 
@@ -26,6 +33,9 @@ Matrix4 view_to_proj_matrix;
 Matrix4 world_to_view_matrix;
 Matrix4 object_to_world_matrix;
 Matrix4 object_to_proj_matrix;
+
+Matrix4 object_to_shadow_map_matrix;
+Matrix4 world_to_shadow_map_matrix;
 
 Shader *current_shader;
 
@@ -48,7 +58,7 @@ const u32 OFFSET_blend_indices = 60;
 
 bool vertex_format_set_to_XCNUU = false;
 
-bool multisampling = false;
+bool multisampling    = true;
 u32  num_multisamples = 4;
 
 //
@@ -81,8 +91,7 @@ bool _dump_gl_errors(const char *tag, const char *func, long line, const char *f
             // GL_DEBUG_SEVERITY_HIGH_ARB
             // GL_DEBUG_SEVERITY_MEDIUM_ARB
 
-            if ((severity == GL_DEBUG_SEVERITY_MEDIUM_ARB) ||
-                (severity == GL_DEBUG_SEVERITY_HIGH_ARB))
+            if ((severity == GL_DEBUG_SEVERITY_MEDIUM_ARB) || (severity == GL_DEBUG_SEVERITY_HIGH_ARB))
             {
                 fprintf(stderr, "[%s at %s:%ld] %s\n", tag, file, line, buffer);
                 result = true;
@@ -100,7 +109,7 @@ bool _dump_gl_errors(const char *tag, const char *func, long line, const char *f
 void DumpShaderInfoLog(GLuint shader, String name)
 {
     constexpr u32 BUFFER_SIZE = 4096;
-    SArr<u8> buffer = NewArray<u8>(BUFFER_SIZE);
+    SArr<u8> buffer = NewArray<u8>(BUFFER_SIZE); // @Speed:
     defer { my_free(&buffer); };
 
     buffer.data[0] = 0;
@@ -113,8 +122,7 @@ void DumpShaderInfoLog(GLuint shader, String name)
         String s;
         s.count = length_result;
         s.data  = buffer.data;
-        printf("ShaderInfoLog for %s : %s\n",
-               temp_c_string(name), temp_c_string(s));
+        printf("ShaderInfoLog for %s : %s\n", temp_c_string(name), temp_c_string(s));
     }
 }
 
@@ -134,8 +142,7 @@ void DumpProgramInfoLog(GLuint program, String name)
         String s;
         s.count = length_result;
         s.data  = buffer.data;
-        printf("ProgramInfoLog for %s:\n%s",
-               temp_c_string(name), temp_c_string(s));
+        printf("ProgramInfoLog for %s:\n%s\n\n", temp_c_string(name), temp_c_string(s));
     }
 }
 
@@ -702,30 +709,30 @@ void refresh_transform()
     }
 
     Matrix4 m = view_to_proj_matrix * (world_to_view_matrix * object_to_world_matrix);
-    // Matrix4 m = object_to_world_matrix * (world_to_view_matrix * view_to_proj_matrix);
-
     object_to_proj_matrix = m;
 
-/*
     if (current_render_type == Render_Type::SHADOW_MAP)
     {
         object_to_shadow_map_matrix = world_to_shadow_map_matrix * object_to_world_matrix;
 
         if (current_shader)
         {
-            print_matrix("ts", object_to_shadow_map_matrix);
-            glUniformMatrix4fv(current_shader.transform_loc, 1, GL_TRUE,
-                               (f32*)(&object_to_shadow_map_matrix[0][0]));
+            // printf("ots:\n");
+            // print_cmaj_as_rmaj(object_to_shadow_map_matrix);
+
+            // Because glm uses the transposed thing like Opengl, we tell is GL_FALSE for not transposing back :(
+            glUniformMatrix4fv(current_shader->transform_loc, 1, GL_FALSE, &object_to_shadow_map_matrix[0][0]);
         }
     }
     else
     {
-        // Render_Type::MAIN_VIEW
-*/
-    if (current_shader)
-    {
-        // Because glm uses the transposed thing like Opengl :(
-        glUniformMatrix4fv(current_shader->transform_loc, 1, GL_FALSE, &object_to_proj_matrix[0][0]);
+        // assert(current_render_type == Render_Type::MAIN_VIEW);
+
+        if (current_shader)
+        {
+            // Because glm uses the transposed thing like Opengl, we tell is GL_FALSE for not transposing back :(
+            glUniformMatrix4fv(current_shader->transform_loc, 1, GL_FALSE, &object_to_proj_matrix[0][0]);
+        }
     }
 }
 
@@ -798,13 +805,13 @@ void size_color_target(Texture_Map *map, bool do_hdr)
         texture_target = GL_TEXTURE_2D_MULTISAMPLE;
     }
 
-    glBindTexture(GL_TEXTURE_2D, map->id);
+    glBindTexture(texture_target, map->id);
     if (do_hdr)
     {
         if (multisampling)
         {
             glTexImage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, num_multisamples, GL_RGBA16F,
-                                    (GLsizei)map->width, (GLsizei)map->height, 1);
+                                    (GLsizei)map->width, (GLsizei)map->height, GL_TRUE);
             DumpGLErrors("multisampling1");
         }
         else
@@ -835,16 +842,23 @@ void size_color_target(Texture_Map *map, bool do_hdr)
 
 void size_depth_target(Texture_Map *map)
 {
-    glBindTexture(GL_TEXTURE_2D, map->id);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT,
-                 (GLsizei)map->width, (GLsizei)map->height, 0,
-                 GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0); // This has no mipmaps
-/*
-    glGenRenderbuffers(1, &map->id);
-    glBindRenderbuffer(GL_RENDERBUFFER, map->id);
-    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_ATTACHMENT, (GLsizei)map->width, (GLsizei)map->height);
-*/
+    if (multisampling)
+    {
+        glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, map->id);
+        glTexImage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, num_multisamples, GL_DEPTH_COMPONENT,
+                                (GLsizei)map->width, (GLsizei)map->height, GL_TRUE);
+        glTexParameteri(GL_TEXTURE_2D_MULTISAMPLE, GL_TEXTURE_MAX_LEVEL, 0); // This has no mipmaps
+        DumpGLErrors("depth target multisampled");
+    }
+    else
+    {
+        glBindTexture(GL_TEXTURE_2D, map->id);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT,
+                     (GLsizei)map->width, (GLsizei)map->height, 0,
+                     GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0); // This has no mipmaps
+        DumpGLErrors("depth target non-multisampled");
+    }
 }
 
 my_pair<Texture_Map*, Texture_Map*> create_texture_rendertarget(i32 width, i32 height, bool do_depth_target, bool do_hdr)
@@ -912,8 +926,8 @@ void set_render_target(u32 index, Texture_Map *map, Texture_Map *depth_map)
         if (multisampling)
         {
             glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + index, GL_TEXTURE_2D_MULTISAMPLE, map->id, 0);
-            glCheckFramebufferStatus(GL_TEXTURE_2D_MULTISAMPLE);
-            DumpGLErrors("check");
+            glCheckFramebufferStatus(GL_FRAMEBUFFER);
+            DumpGLErrors("check multisampled color_map");
         }
         else
         {
@@ -923,16 +937,40 @@ void set_render_target(u32 index, Texture_Map *map, Texture_Map *depth_map)
 
         if (depth_map)
         {
-            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depth_map->id, 0);
-            DumpGLErrors("check depth_map");
+            if (multisampling)
+            {
+                glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D_MULTISAMPLE, depth_map->id, 0);
+                DumpGLErrors("check multisampled depth_map");
+            }
+            else
+            {
+                glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depth_map->id, 0);
+                DumpGLErrors("check depth_map");
+            }
 
             glEnable(GL_DEPTH_TEST);
             glDepthMask(GL_TRUE);
         }
 
-        GLenum draw_buffers[] = {GL_COLOR_ATTACHMENT0};
-        glDrawBuffers(1, draw_buffers);
-        glViewport(0, 0, map->width, map->height);
+        if (multisampling)
+        {
+            // @Hack @Hack @Hack: We are hardcoding to render to the ldr buffer when we do multisampling. This is bad.
+            glBindFramebuffer(GL_FRAMEBUFFER, the_ldr_buffer->fbo_id);
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + index, GL_TEXTURE_2D, the_ldr_buffer->id, 0);
+
+            glBindFramebuffer(GL_READ_FRAMEBUFFER, map->fbo_id);
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, the_ldr_buffer->fbo_id);
+            glBlitFramebuffer(0, 0, map->width, map->height, 0, 0, the_ldr_buffer->width, the_ldr_buffer->height, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+
+            glViewport(0, 0, map->width, map->height);
+            glBindFramebuffer(GL_FRAMEBUFFER, map->fbo_id); // Bind the actual offscreen buffer back so that we can draw stuff to here.
+        }
+        else
+        {
+            GLenum draw_buffers[] = {GL_COLOR_ATTACHMENT0};
+            glDrawBuffers(1, draw_buffers);
+            glViewport(0, 0, map->width, map->height);
+        }
     }
 
     render_target_width = map->width;
@@ -942,6 +980,7 @@ void set_render_target(u32 index, Texture_Map *map, Texture_Map *depth_map)
 Texture_Map *last_applied_diffuse_map = NULL;
 Texture_Map *last_applied_mask_map = NULL;
 
+/* @Incomplete: Need this:
 Texture_Map *create_texture(Bitmap *data)
 {
     auto map = New<Texture_Map>();
@@ -949,81 +988,78 @@ Texture_Map *create_texture(Bitmap *data)
     map->height = data->height;
     map->data   = data;
 
-    update_texture(map);
+    // update_texture(map);
 
     return map;
 }
+*/
 
-void update_texture(Texture_Map *map)
+void update_texture_from_bitmap(Texture_Map *map, Bitmap *bitmap)
 {
-    if (!map->id || (map->id == 0xffffffff))
+    assert(map->num_mipmap_levels >= 1);
+
+    if (!map->id || (map->id == 0xffffffff)) // @Cleanup: Decide on which one to use as UNINITIALIZE.
     {
-        // printf("Generating a texture\n");
         glGenTextures(1, &map->id);
+        // logprint("update_texture_from_bitmap", "Creating a new texture with id %d for '%s'.\n", map->id, temp_c_string(map->name));
     }
 
-    if (!map->data) return;
+    if (!bitmap)
+    {
+        logprint("update_texture_from_bitmap", "Tried to set a bitmap to texture '%s'?!?!\n", temp_c_string(map->name));
+        return;
+    }
 
     glBindTexture(GL_TEXTURE_2D, map->id);
 
-    // GLenum gl_dest_format   = GL_RGBA8; // GL_SRGB8_ALPHA8; @Fixme: This is wrong, we actually want SRGB8_ALPHA8 (sometimes)...
+    assert(bitmap->width && bitmap->height);
+    map->width  = bitmap->width;
+    map->height = bitmap->height;
 
-    GLenum gl_dest_format   = map->is_srgb ? GL_SRGB8_ALPHA8 : GL_RGBA8;
+    auto texture_info = get_ogl_format(map->format, map->is_srgb);
 
-    GLenum gl_source_format = GL_RGBA;
-    GLenum gl_type          = GL_UNSIGNED_BYTE;
-    i32    alignment        = 4;
-
-    switch (map->data->format)
+    auto bitmap_data = bitmap->data;
+    if (!texture_info.compressed)
     {
-        case Texture_Format::ARGB8888:
-        {
-            // Does nothing, because this is already handled.
-        } break;
-        case Texture_Format::ARGB8888_NO_SRGB: // @Incomplete: This is a dead branch right now.
-        {
-            gl_dest_format   = GL_RGBA8;
-            gl_source_format = GL_RGBA;
-        } break;
-        case Texture_Format::RGB888:
-        {
-            gl_dest_format   = map->is_srgb ? GL_SRGB8 : GL_RGB8;
-            // gl_dest_format   = GL_RGB8;
-            gl_source_format = GL_RGB;
-            alignment        = 1;
-        } break;
-        case Texture_Format::ARGBhalf:
-        {
-            gl_dest_format   = GL_RGBA16F;
-            gl_source_format = GL_RGBA;
-            gl_type          = GL_HALF_FLOAT;
-        } break;
-        case Texture_Format::R8:
-        {
-            gl_dest_format   = GL_R8;
-            gl_source_format = GL_RED;
-            gl_type          = GL_UNSIGNED_BYTE;
-        } break;
-        default:
-        {
-            fprintf(stderr, "[update_texture] Texture format has no GL dest and src defined\n");
-            assert(0);
-        };
+        glPixelStorei(GL_UNPACK_ALIGNMENT, texture_info.alignment);
+        glTexImage2D(GL_TEXTURE_2D, 0, texture_info.dest_format,
+                     map->width, map->height,
+                     0, texture_info.src_format, texture_info.src_type, xxx bitmap_data);
+        glGenerateMipmap(GL_TEXTURE_2D);
     }
+    else
+    {
+        auto block_size = texture_info.block_size;
 
-    // printf("Texture format == %x\n", gl_format);
+        assert(block_size); // In case I forget to set it above.
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 1); // Set alignment to 1, just in case...
 
-    // The image might not have the alignment that Opengl expected
-    glPixelStorei(GL_UNPACK_ALIGNMENT, alignment);
+        auto width  = map->width;
+        auto height = map->height;
 
-    glTexImage2D(GL_TEXTURE_2D, 0, gl_dest_format,
-                 map->data->width, map->data->height,
-                 0, gl_source_format, gl_type, xxx map->data->data);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, map->num_mipmap_levels - 1); // @Important: The MAX_LEVEL thing here is the mipmap levels count and it is 0-based indexed, so we do a subtract by 1.
 
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
-    // glGenerateMipmap(GL_TEXTURE_2D);
+        u32 offset = 0;
+        for (u32 mip_level = 0; mip_level < map->num_mipmap_levels; ++mip_level)
+        {
+            if (!width && !height) break;
+
+            u32 image_size = ((width + 3)/4) * ((height + 3)/4) * block_size; // Size in bytes, round to nearest power of 2.
+
+            glCompressedTexImage2D(GL_TEXTURE_2D, mip_level, texture_info.dest_format, width, height, 0, image_size, bitmap_data + offset);
+
+            offset += image_size;
+            width  /= 2;
+            height /= 2;
+
+            if (width  < 1) width  = 1;
+            if (height < 1) height = 1;
+        }
+    }
 }
 
+/*
 void destroy_texture(Texture_Map *map)
 {
     if (map->id)
@@ -1036,23 +1072,31 @@ void destroy_texture(Texture_Map *map)
     map->width  = 0;
     map->height = 0;
 }
+*/
 
 void set_texture(String texture_name, Texture_Map *map)
 {
     auto shader = current_shader;
     if (!shader) return;
 
-    if (map && (map->dirty) && map->data)
+    if (!map)
+    {
+        logprint("set_texture", "Tried to pass a NULL texture to set_texture!\n");
+        return;
+    }
+
+    if (map->dirty)
     {
         map->dirty = false;
-        update_texture(map);
+        assert(0); // set_texture will not take care of reloading bitmaps for the textures, the caller will do that.
+        // update_texture(map);
     }
 
     auto wrapping = false;
     auto flow_map = false; // @Todo: this is for water rendering
 
     GLint loc          = -1;
-    GLint texture_unit = 0;
+    GLint texture_unit = 0; // @Note: This corresponds to the layout (binding = ...) in the shader.
 
     // @Hack
     if (equal(texture_name, String("diffuse_texture")))
@@ -1075,12 +1119,18 @@ void set_texture(String texture_name, Texture_Map *map)
         loc          = shader->blend_texture_loc;
         wrapping     = true;
     }
+    else if (texture_name == String("normal_map_texture"))
+    {
+        texture_unit = 3;
+        loc          = shader->normal_map_texture_loc;
+        wrapping     = true;
+    }
     else
     {
         auto c_name  = temp_c_string(texture_name);
         loc          = glGetUniformLocation(shader->program, (char*)c_name);
         wrapping     = false;
-        texture_unit = 3;
+        texture_unit = 4;
     }
 
     immediate_flush(); // Flush *after* permitting early-out
@@ -1106,8 +1156,16 @@ void set_texture(String texture_name, Texture_Map *map)
 
         if (shader->textures_point_sample)
         {
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            if (map->num_mipmap_levels > 1)
+            {
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_LINEAR);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST_MIPMAP_LINEAR);
+            }
+            else
+            {
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            }
         }
         else
         {
@@ -1132,6 +1190,21 @@ void set_texture(String texture_name, Texture_Map *map)
     }
     else
     {
+        // @Hack: This helps with the shadow map texture not getting repeated to places where
+        // we should not do shadows. We should think of moving it somewhere else but I don't know man.
+        if (map == shadow_map_depth)
+        {
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+            
+            auto border_color = Vector4(1, 1, 1, 1);
+            glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, (f32*)&border_color);
+
+            return;
+        }
+
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     }

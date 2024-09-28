@@ -94,15 +94,15 @@ f32 get_run_speed(Guy *guy)
 
 void reset(Visual_Interpolation *v, Source_Location loc)
 {
-    v->move_type = Move_Type::LINEAR;
+    v->move_type        = Move_Type::LINEAR;
     v->linear_move_type = Linear_Move_Type::NONE;
 
     v->start_time = -1;
-    v->duration = 0;
-    v->elapsed = 0;
+    v->duration   = 0;
+    v->elapsed    = 0;
 
     v->teleport_direction = Vector3(0, 0, 0);
-    v->has_teleported = false;
+    v->has_teleported     = false;
     
     v->velocity = Vector3(0, 0, 0);
 
@@ -114,19 +114,18 @@ void reset(Visual_Interpolation *v, Source_Location loc)
     // Don't clear transaction_id, because we chain this between movements.
 }
 
-void add_visual_interpolation(Entity *e, Vector3 old_position, Vector3 new_position, bool is_teleport, f32 duration, Transaction_Id transaction_id, Source_Location loc)
+void add_visual_interpolation(Entity *e, Vector3 old_position, Vector3 new_position, Move_Type move_type, f32 duration, Transaction_Id transaction_id, Source_Location loc)
 {
-    Visual_Interpolation v;
+    Visual_Interpolation v = {};
 
-    if (is_teleport) v.move_type = Move_Type::TELEPORT;
-    else v.move_type = Move_Type::LINEAR;
-    
+    v.move_type = move_type;
+
     v.start_time = static_cast<f32>(timez.current_time);
     v.visual_end = new_position;
     // v.location = loc;
 
     auto visual_start = old_position;
-    auto visual_end = new_position;
+    auto visual_end   = new_position;
 
     auto manager = e->manager;
     // if (manager->wrapping) // If :Wrapping, then visual_start and visual_end will changed
@@ -139,21 +138,23 @@ void add_visual_interpolation(Entity *e, Vector3 old_position, Vector3 new_posit
     e->visual_position = visual_start;
 
     v.visual_start = visual_start;
-    v.visual_end = visual_end;
+    v.visual_end   = visual_end;
 
     if (transaction_id) v.transaction_id = transaction_id;
-    else v.transaction_id = get_next_transaction_id(e->manager);
+    else                v.transaction_id = get_next_transaction_id(e->manager);
 
     if (duration < 0) v.duration = gameplay_visuals.visual_position_duration;
-    else v.duration = duration;
+    else              v.duration = duration;
 
-    auto vel = e->visual_interpolation.velocity;
-    // auto old_vel = e->visual_interpolation.old_velocity;
+    // Keeping the velocity of the previous visual interpolation even though we
+    // are adding a new one to the entity. This is to avoid discontinuities.
+    auto vel     = e->visual_interpolation.velocity;
+    auto old_vel = e->visual_interpolation.old_velocity;
 
     e->visual_interpolation = v;
 
-    e->visual_interpolation.velocity = vel;
-    // e.visual_interpolation.old_velocity = old_vel;
+    e->visual_interpolation.velocity     = vel;
+    e->visual_interpolation.old_velocity = old_vel;
 }
 
 void update_synced_position(Entity *e)
@@ -173,7 +174,7 @@ void update_synced_position(Entity *e)
     auto other_length = glm::length(other_v->visual_end - other_v->visual_start);
     if (other_length)
     {
-        auto other_dir = unit_vector(other_v->visual_end - other_v->visual_start);
+        auto other_dir  = unit_vector(other_v->visual_end - other_v->visual_start);
         auto other_dist = glm::dot(other_dir, other->visual_position - other_v->visual_start);
 
         if (other_dist >= 0) // Don't let us go backward.
@@ -272,7 +273,7 @@ void update_guy_position(Guy *guy, f32 dt)
     auto desired_vel = unit_vector(visual_delta) * run_speed * SPEED_SCALE;
     if (do_decel)
     {
-        const f32 SLOWDOWN_DISTANCE = 0.2;
+        const f32 SLOWDOWN_DISTANCE = 0.2; // @Hardcoded
 
         // dv = 160.0f * v->speed_scale * dt;
         dv = 160.0f * SPEED_SCALE * dt;
@@ -294,7 +295,6 @@ void update_guy_position(Guy *guy, f32 dt)
     // correct since we move faster across diagonals, but we don't
     // in general move across diagonals in this game, so I am 
     // presuming it will be fine.
-
     vel->x = move_toward(vel->x, desired_vel.x, dv);
     vel->y = move_toward(vel->y, desired_vel.y, dv);
 
@@ -306,7 +306,7 @@ void update_guy_position(Guy *guy, f32 dt)
     assert((v->move_type == Move_Type::LINEAR));
 
     auto new_signed_distance = glm::dot(v->visual_end - guy->base->visual_position, dir); // :Wrapping
-    const f32 EPSILON = 0.001f;
+    const f32 EPSILON = 0.001f; // Will be numerically ill-conditioned without this.
     if (new_signed_distance <= EPSILON) v->done = true;
     if (new_signed_distance <= 0)
     {
@@ -342,16 +342,17 @@ void update_visual_position(Entity *e, f32 dt)
         auto t = v->elapsed / v->duration;
         Clamp(&t, 0.0f, 1.0f);
 
-        // if (v->elapsed >= v->teleport_pre_time)
+        if (v->elapsed >= v->teleport_pre_time)
         {
             if (!v->has_teleported)
             {
-                e->visual_interpolation.visual_start = v->visual_end;
-                v->has_teleported = true;
+                v->visual_start    = v->visual_end;
+                v->has_teleported  = true;
+                e->visual_position = v->visual_end;
                 return;
             }
 
-            // if (v->elapsed >= v->teleport_post_time)
+            if (v->elapsed >= v->teleport_post_time)
             {
                 v->done = true;
                 return;
@@ -440,10 +441,9 @@ void update_entities_visual_interpolation(Entity_Manager *manager, f32 dt)
 
     //
     // First we do things without sync_id, then we do things with sync_id,
-    // to ensure that we dont' use the previous frame's dat for sync.
+    // to ensure that we don't use the previous frame's data for sync.
     // Maybe we should have put them into two separate arrays!
     //
-
     for (auto it : considered)
     {
         auto v = &it->visual_interpolation;
@@ -464,6 +464,7 @@ void update_entities_visual_interpolation(Entity_Manager *manager, f32 dt)
                     (it2->visual_interpolation.start_time >= 0))
                 {
                     array_add_if_unique(&interps_completed, it2);
+                    it2->visual_interpolation.start_time = -1;
                 }
             }
 
@@ -477,14 +478,10 @@ void update_entities_visual_interpolation(Entity_Manager *manager, f32 dt)
         auto v = &it->visual_interpolation;
         if (v->sync_id)
         {
-            auto v = &it->visual_interpolation;
-            if (v->sync_id)
-            {
-                auto old_v = it->visual_interpolation;
-                update_synced_position(it);
-                // has_moved(it, old_v, it->orientation, it->scale);
-                continue;
-            }
+            auto old_v = it->visual_interpolation;
+            update_synced_position(it);
+            // has_moved(it, old_v, it->orientation, it->scale);
+            continue;
         }
     }
 
@@ -494,30 +491,34 @@ void update_entities_visual_interpolation(Entity_Manager *manager, f32 dt)
         enact_next_buffered_move(manager);
     }
 
-    // for (auto e : interps_completed)
-    // {
-    //     // If this entity restarted a new animation due to enact_next_buffered_move,
-    //     // don't animate him to neutral.
-    //     if (e->visual_interpolation.start_time >= 0)
-    //     {
-    //         e->visual_interpolation.velocity = e->visual_interpolation.old_velocity;
-    //         continue;
-    //     }
+    for (auto e : interps_completed)
+    {
+        auto v = &e->visual_interpolation;
 
-    //     if (cmp_var_type_to_type(e->type, Guy))
-    //     {
-    //         auto guy = Down<Guy>(e);
-    //         if (guy->base->dead) continue;
+        // If this entity restarted a new animation due to enact_next_buffered_move,
+        // don't animate him to neutral.
+        if (v->start_time >= 0)
+        {
+            v->velocity = v->old_velocity;
+            continue;
+        }
 
-    //         // guy->animation_state.sent_going_far = false;
-    //         e->visual_interpolation.velocity = Vector3(0, 0, 0);
+        if (cmp_var_type_to_type(e->type, Guy))
+        {
+            auto guy = Down<Guy>(e);
+            if (guy->base->dead) continue;
 
-    //         // // If we are ending a known move type, issue a known
-    //         // // handler message. Otherwise, go to StateDefault.
-    //         // if (guy->active) send_message(guy, "go_state_active", "StateDefault");
-    //         // else send_message(guy, "go_state_inactive", "StateDefault");
-    //     }
-    // }
+            // guy->animation_state.sent_going_far = false;
+            v->velocity = Vector3(0, 0, 0);
+
+            animate(guy, Human_Animation_State::ACTIVE);
+
+            // If we are ending a known move type, issue a known
+            // handler message. Otherwise, go to StateDefault. @Incomplete: Need the Animation_Graph stuff.
+            // if (guy->active) send_message(guy, "go_state_active", "StateDefault");
+            // else             send_message(guy, "go_state_inactive", "StateDefault");
+        }
+    }
 }
 
 

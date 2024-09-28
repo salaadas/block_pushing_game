@@ -146,8 +146,8 @@ bool draw_one_fader(Fader *fader)
 
         auto font = fader->font;
 
-        draw_text(font, static_cast<i32>((render_target_width - width)/2.0f + ox), static_cast<i32>(yy + oy), fader->text, bg_color);
-        draw_text(font, static_cast<i32>((render_target_width - width)/2.0f), static_cast<i32>(yy), fader->text, color);
+        draw_prepared_text(font, static_cast<i32>((render_target_width - width)/2.0f + ox), static_cast<i32>(yy + oy), bg_color);
+        draw_prepared_text(font, static_cast<i32>((render_target_width - width)/2.0f), static_cast<i32>(yy), color);
     }
 
     return false;

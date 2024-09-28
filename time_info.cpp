@@ -5,7 +5,7 @@
 
 Time_Info timez = {};
 
-f64 global_time_rate = 1.0;
+f64 global_time_rate = 1.0f;
 f64 last_time        = 0.0;
 f64 start_time;
 bool has_init = false;

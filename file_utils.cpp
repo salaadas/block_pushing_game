@@ -393,7 +393,7 @@ my_pair<String, String> break_by_spaces(String line)
     return {first_half, line};
 }
 
-void start_file(Text_File_Handler *handler, String full_path, String log_agent)
+void start_file(Text_File_Handler *handler, String full_path, String log_agent, bool optional)
 {
     // @Important: We do NOT copy any of these string; we presume they remain valid
     // throughout the lifetime of the handler.
@@ -410,7 +410,7 @@ void start_file(Text_File_Handler *handler, String full_path, String log_agent)
 
     if (!success)
     {
-        logprint(c_log_agent, "Unable to load file '%s'.\n", c_full_path);
+        if (!optional) logprint(c_log_agent, "Unable to load file '%s'.\n", c_full_path);
         handler->failed = true;
         return;
     }

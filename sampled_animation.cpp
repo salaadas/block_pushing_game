@@ -1,18 +1,16 @@
-#include "sampled_animation.h"
+//
+// - How do we get the frames per second of the animation?
+// - Why is the walking animation glitching back to the first one
+// when being played?
+//
 
-// #include <assimp/cimport.h>
-// #include <assimp/scene.h>
-// #include <assimp/postprocess.h>
+#include "sampled_animation.h"
 
 #include <cgltf.h>
 // #include <ufbx.h>
 #include "file_utils.h"
 
 #include <glm/gtc/type_ptr.hpp> // for glm::make_mat4
-
-// @Investigate how to get the global matrix for the animation.
-// @Investigate how to get the global matrix for the animation.
-// @Investigate how to get the global matrix for the animation.
 
 //
 // Right now, we are loading keyframed animations from gltf only.
@@ -115,8 +113,9 @@ bool load_sampled_animation(Sampled_Animation *anim, String full_path)
 {
     auto c_path    = (char*)(temp_c_string(full_path));
     auto extension = find_character_from_right(full_path, '.');
+    if (!extension) return false;
     advance(&extension, 1); // Skip the '.'
-    // assert((extension == String("keyframe_animation"))); // Only this type of file is allowed. @Incomplete:
+    assert((extension == String("keyframe_animation"))); // Only this type of file is allowed.
 
     cgltf_options loader_options = {};
     cgltf_data *parsed_gltf_data = NULL;
@@ -185,8 +184,7 @@ bool load_sampled_animation(Sampled_Animation *anim, String full_path)
     anim->num_samples = samples_count;
 
     // Get the nodes count. In order to attain the count, we need to export
-    // the skinning info to get the skeleton nodes count. (This only applies
-    // to GLTF).
+    // the skinning info to get the skeleton nodes count. (This only applies to GLTF).
     auto skeletons_count = parsed_gltf_data->skins_count;
     assert(skeletons_count);
     if (skeletons_count > 1)
@@ -361,11 +359,11 @@ bool load_sampled_animation(Sampled_Animation *anim, String full_path)
     // the 'keyframes' field in the sampled animation.
     //
     auto total_frames = anim->num_samples;
-    auto keyframes = NewArray<Keyframe>(total_frames);
+    auto keyframes    = NewArray<Keyframe>(total_frames);
 
     for (i64 frame_index = 0; frame_index < total_frames; ++frame_index)
     {
-        auto time_stamp = frame_index / static_cast<f32>(anim->frame_rate);
+        auto time_stamp = frame_index / static_cast<f32>(anim->frame_rate - 1); // Subtracting by 1 here because we want the frame_index to range from [0..1]
 
         auto frame = &keyframes[frame_index];
         // For each frame, we store the transformations of all the skeleton nodes.
@@ -374,10 +372,10 @@ bool load_sampled_animation(Sampled_Animation *anim, String full_path)
         for (i64 node_index = 0; node_index < nodes_count; ++node_index)
         {
             // // @Investigate: Are these transformations for the node in the bind pose?
-            auto node = skeleton_data->joints[node_index];
-            auto ot = node->translation;
-            auto oo = node->rotation;
-            auto os = node->scale;
+            // auto node = skeleton_data->joints[node_index];
+            // auto ot = node->translation;
+            // auto oo = node->rotation;
+            // auto os = node->scale;
 
             auto reference = &xform_references[node_index];
 

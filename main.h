@@ -7,6 +7,9 @@
 #include "texture_catalog.h"
 #include "level_set.h"
 #include "mesh_catalog.h"
+#include "animation_catalog.h"
+#include "animation_names.h"
+#include "animation_graph.h"
 
 extern String              dir_of_running_exe;
 
@@ -15,6 +18,11 @@ extern Shader_Catalog      shader_catalog;
 extern Texture_Catalog     texture_catalog;
 extern Level_Set_Catalog   level_set_catalog;
 extern Mesh_Catalog        mesh_catalog;
+extern Animation_Catalog       animation_catalog;
+extern Animation_Names_Catalog animation_names_catalog;
+extern Animation_Graph_Catalog animation_graph_catalog;
+
+extern Animation_Graph *human_animation_graph;
 
 extern Texture_Map *white_texture;
 

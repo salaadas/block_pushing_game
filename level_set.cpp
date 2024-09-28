@@ -35,13 +35,15 @@ Level_Set *make_placeholder(Level_Set_Catalog *catalog, String short_name, Strin
 
 void reload_asset(Level_Set_Catalog *catalog, Level_Set *set)
 {
+    array_reset(&set->level_names);
+
     Text_File_Handler handler;
     String agent("level_set:reload_asset");
 
     start_file(&handler, set->full_path, agent);
-    if (handler.failed) return NULL;
+    if (handler.failed) return;
 
-    array_reset(&set->level_names);
+    defer { deinit(&handler); };
 
     auto c_agent = temp_c_string(agent);
 
@@ -53,10 +55,6 @@ void reload_asset(Level_Set_Catalog *catalog, Level_Set *set)
 
         assert(line);
 
-        // @Fixme: Fix the trailing comment problem with text file handler
-        // printf("Line is '%s'\n", temp_c_string(line));
         array_add(&set->level_names, copy_string(line));
-    }
-
-    deinit(&handler);
+    }    
 }
