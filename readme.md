@@ -13,6 +13,7 @@ The engine features:
 - PBR material system.
 - Immediate-mode GUI library (has buttons, text inputs, color picker, checkboxes, comboboxes, window panels, slidable regions, scrollable regions, ...).
 - Font rendering with FreeType.
+- Audio mixer with miniaudio, supports for .wav (drwav), .ogg (stb_vorbis), .mp3 (drmp3).
 - Tone mapping/gamma correction, HDR.
 - Parser that allows for include directive and some extra tags for GLSL shaders.
 - Catalog assets system that supports hotloading.
